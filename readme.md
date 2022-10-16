@@ -63,5 +63,49 @@ Steps to run the extension in vscode's "extension development host":
 - Run the "extension" configuration
 - The extension development host window opens
 - Load your cf project from that vscode instance
+- Add a CFML debug configuration
+- Attach to the cf server
+- Set breakpoints, etc.
+
+---
+### Plugin options
+
+A CFML debug configuration looks like:
+```
+{
+    "type": "cfml",
+    "request": "attach",
+    "name": "Attach to server",
+    "hostName": "localhost",
+    "port": 8000,
+    "pathTransform": { // optional
+        "idePrefix": "${workspaceFolder}",
+        "cfPrefix": "/app"
+    }
+}
+```
+Hostname and port should match the `cfHost` and `cfPort` you've configured the java agent with.
+
+`pathTransform` maps between "ide paths" and "cf server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and lucee talking about the same files, we need to know how to transform these path names.
+
+Currently, it is a simple prefix replace, e.g.:
 
 
+```
+"pathTransform": {
+    "idePrefix": "/foo",
+    "cfPrefix": "/serverAppRoot"
+}
+
+ide says
+ "set a breakpoint in '/foo/bar/baz/TheThing.cfc'
+server will understand it as
+ "set a breakpoint in '/serverAppRoot/bar/baz/TheThing.cfc'
+
+server says
+ "hit a breakpoint in '/serverAppRoot/bar/baz/TheThing.cfc'
+ide will understand it as
+ "hit a breakpoint in '/foo/bar/baz/TheThing.cfc'"
+```
+
+Not providing a `pathTransform` means no path transformation will take place.
