@@ -1,0 +1,97 @@
+{
+  "name": "cfls-debug",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build-dev-windows": "tsc && node \"node_modules/esbuild/bin/esbuild\" ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js",
+    "build-dev-linux":   "tsc && ./node_modules/esbuild/bin/esbuild        ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onDebugResolve:cfml"
+  ],
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "contributes": {
+    "breakpoints": [
+      {
+        "language": "cfml"
+      }
+    ],
+    "commands": [
+      {
+        "command": "luceeDebugger.showLoadedClasses",
+        "title": "Lucee debugger: Show loaded CF classes",
+        "enablement": "debugType == 'cfml'"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "cfml",
+        "languages": [
+          "cfml"
+        ],
+        "label": "CFML Debug Adapter",
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "hostName",
+              "port"
+            ],
+            "properties": {
+              "port": {
+                "type": "number",
+                "description": "Port that has been configured to accept luceedebug connections.",
+                "default": 10000
+              },
+              "hostName": {
+                "type": "string",
+                "description": "Hostname (i.e. `localhost`) or address, of server on which the target Lucee server is running."
+              },
+              "pathTransform": {
+                "type": "object",
+                "description": "Transform source file paths (e.g. if in your IDE, you are editing '/foo/bar/baz.cfc', but the cf engine knows it as '/app/bar/baz.cfc', it needs to be transformed.",
+                "properties": {
+                  "idePrefix": "string",
+                  "cfPrefix": "string"
+                },
+                "default": {
+                  "idePrefix": "${workspaceFolder}",
+                  "cfPrefix": "/app"
+                }
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "cfml",
+            "request": "attach",
+            "name": "Attach to server",
+            "hostName": "localhost",
+            "pathTransform": {
+              "idePrefix": "${workspaceFolder}",
+              "cfPrefix": "/app"
+            },
+            "port": 8000
+          }
+        ],
+        "configurationSnippets": [],
+        "variables": {}
+      }
+    ]
+  },
+  "dependencies": {
+    "@types/node": "^17.0.0",
+    "@types/vscode": "^1.63.1",
+    "vscode-debugadapter": "^1.51.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.14.5"
+  }
+}
