@@ -20,8 +20,8 @@ easiest way to run it is locally, in an 'extension development host'.
 ```
 # java agent
 cd luceedebug
-gradle build
-ls build/libs/luceedebug.jar
+gradle shadowjar
+ls ./luceedebug/build/libs/luceedebug.jar
 ```
 Add the following to your java invocation
 
