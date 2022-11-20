@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 import lucee.runtime.type.scope.Scope;
+import lucee.runtime.Component;
 import lucee.runtime.type.Array;
 
 import luceedebug.*;
@@ -51,8 +52,15 @@ class CfEntityRef {
         // reset strong refs, they could change here; discard old refs, maybe we'll get new ones during the method
         owned_keepAlive = new ArrayList<>();
 
+        if (cfEntity.wrapped instanceof Component) {
+            @SuppressWarnings("unchecked")
+            var m = (Map<String, Object>)((Component)cfEntity.wrapped).getComponentScope();
+            return getAsMaplike(m);
+        }
         if (cfEntity.wrapped instanceof Map) {
-            return getAsMaplike();
+            @SuppressWarnings("unchecked")
+            var m = (Map<String, Object>)cfEntity.wrapped;
+            return getAsMaplike(m);
         }
         else if (cfEntity.wrapped instanceof Array) {
             return getAsCfArray();
@@ -64,11 +72,10 @@ class CfEntityRef {
 
     static private Comparator<IDebugEntity> xscopeByName = Comparator.comparing((IDebugEntity v) -> v.getName().toLowerCase());
 
-    private IDebugEntity[] getAsMaplike() {
+    private IDebugEntity[] getAsMaplike(Map<String, Object> map) {
         ArrayList<IDebugEntity> results = new ArrayList<>();
         
-        @SuppressWarnings("unchecked")
-        Set<Map.Entry<String,Object>> entries = ((Map<String, Object>)cfEntity.wrapped).entrySet();
+        Set<Map.Entry<String,Object>> entries = map.entrySet();
         
         for (Map.Entry<String, Object> entry : entries) {
             IDebugEntity val = asValue(entry.getKey(), entry.getValue());
@@ -120,7 +127,12 @@ class CfEntityRef {
             owned_keepAlive.add(objRef);
 
             int len = ((Map<?,?>)objRef.cfEntity.wrapped).size();
-            val.value = "{} (" + len + " members)";
+            if (cfEntity instanceof Component) {
+                val.value = "cfc<" + ((Component)cfEntity).getName() + ">";
+            }
+            else {
+                val.value = "{} (" + len + " members)";
+            }
             val.variablesReference = objRef.id;
         }
         else {

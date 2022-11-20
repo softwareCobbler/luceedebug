@@ -349,29 +349,7 @@ public class CfVm implements ICfVm {
             // The worker will suspend *this* thread, then do stuff, and then unsuspend it.
             // After unspending it, the worker will set done=true and we will be unblocked
             var start = System.nanoTime();
-            while (!done.get()) {
-                // 
-                // Spin / poll
-                // This will happen pretty often (every succesful DAP step{in,out,over} request),
-                // maybe we want some kind of monitor.
-                //
-                // We expect to spin for about ~5-10ms
-                //
-                // The worker queue is generally expected to always be empty,
-                // so we shouldn't have to wait long after we schedule the work for the work to begin.
-                //
-                // We poll at a granularity of 1ms which shouldn't introduce a noticeable lag,
-                // and avoids 5-10ms of wasteful "pure spin" cpu work.
-                //
-                // Effectively this is "check if we're done every millisecond, probably at most around 10 times"
-                //
-                try {
-                    Thread.sleep(1);
-                }
-                catch (InterruptedException e) {
-                    // discard ?...
-                }
-            }
+            while (!done.get());
             var end = System.nanoTime();
             System.out.println("Spin wait on step completition handler took " + (((end -start) / 1e6) + "ms"));
         });
