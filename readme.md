@@ -55,8 +55,8 @@ Prerequisites:
 cd vscode-client
 npm install
 
-npm run-build-windows # windows
-npm run-build-linux   # linux
+npm run build-dev-windows # windows
+npm run build-dev-linux # mac/linux
 
 code . # open vscode in this dir
 ```
