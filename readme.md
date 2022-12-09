@@ -73,7 +73,7 @@ Steps to run the extension in vscode's "extension development host":
 - Run the "extension" configuration
 - The extension development host window opens
 - Load your cf project from that vscode instance
-- Add a CFML debug configuration
+- Add a CFML debug configuration (Run > Open Configurations)
 - Attach to the cf server
 - Set breakpoints, etc.
 
