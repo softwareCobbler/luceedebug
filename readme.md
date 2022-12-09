@@ -45,6 +45,11 @@ The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortun
 
 ### VSCode client
 
+Prerequisites:
+ * `npm`
+ * `typescript`
+   * Mac: `brew install typescript`
+
 ```
 # vscode client
 cd vscode-client
