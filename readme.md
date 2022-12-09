@@ -15,7 +15,9 @@ easiest way to run it is locally, in an 'extension development host'.
 
 ---
 
-### Java  agent
+### Java agent
+
+#### Build Agent Jar
 
 ```
 # java agent
@@ -23,7 +25,10 @@ cd luceedebug
 gradle shadowjar
 ls ./luceedebug/build/libs/luceedebug.jar
 ```
-Add the following to your java invocation
+
+#### Install and Configure Agent
+
+Add the following to your java invocation. (Tomcat users can use the `setenv.sh` file for this purpose.)
 
 ```
 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:9999
