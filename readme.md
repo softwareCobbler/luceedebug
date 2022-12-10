@@ -1,4 +1,4 @@
-## luceedebug
+# luceedebug
 
 luceedebug is a step debugger for Lucee.
 
@@ -11,18 +11,27 @@ The java agent needs a particular invocation and needs to be run as part of JVM/
 
 The VS Code client plugin is not released on the VS Code plugin Marketplace, so it's easiest to run it locally, in an 'extension development host'.
 
-### Java Agent
+## Java Agent
 
-#### Build Agent Jar
+### Build Agent Jar
+
+The following steps will build to: `./luceedebug/build/libs/luceedebug.jar`
+
+#### Build Agent Jar on Mac / Linux
 
 ```
-# java agent
 cd luceedebug
-gradle shadowjar
-ls ./luceedebug/build/libs/luceedebug.jar
+./gradlew shadowjar
 ```
 
-#### Install and Configure Agent
+#### Build Agent Jar on Windows
+
+```
+cd luceedebug
+gradlew.bat shadowjar
+```
+
+### Install and Configure Agent
 
 Add the following to your java invocation. (Tomcat users can use the `setenv.sh` file for this purpose.)
 
@@ -42,9 +51,9 @@ The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortun
 
 (There didn't seem to be an immediately obvious way to pull the name of "the current" jar file from an agent's `premain`, but maybe it's just been overlooked. If you know let us know!)
 
-### VS Code Client
+## VS Code Client
 
-#### Build Client
+### Build Client
 
 Prerequisites:
 * `npm`
@@ -60,7 +69,7 @@ npm run build-dev-windows # windows
 npm run build-dev-linux # mac/linux
 ```
 
-#### Run Client
+### Run Client
 
 ```
 cd vscode-client
@@ -78,7 +87,7 @@ Steps to run the extension in VS Code's "extension development host":
 - Attach to the CF server
 - Set breakpoints, etc.
 
-### Plugin options
+## Plugin options
 
 A CFML debug configuration looks like:
 ```
