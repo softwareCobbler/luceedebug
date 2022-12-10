@@ -86,7 +86,7 @@ public class CfVm implements ICfVm {
             final long threadID = threadRef.uniqueID();
             threadByJdwpId.put(threadID, new WeakReference<>(thread));
             threadRefByThread.put(thread, threadRef);
-            cleaner.register(threadRef, () -> {
+            cleaner.register(thread, () -> {
                 // Manually remove from (threadID -> WeakRef<Thread>) mapping
                 // The (WeakRef<Thread> -> ThreadRef) map should be autocleaning by virtue of "weakKeys"
                 threadByJdwpId.remove(threadID);
