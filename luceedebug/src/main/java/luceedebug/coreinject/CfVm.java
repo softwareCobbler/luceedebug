@@ -461,11 +461,27 @@ public class CfVm implements ICfVm {
      */
     private void trackClassRef(ReferenceType refType) {
         try {
-            var replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(refType.sourceName());
-            final var klassMap = new KlassMap(refType);
-            klassMap_.put(refType.sourceName(), klassMap);
+            final var maybeNull_klassMap = KlassMap.maybeNull_tryBuildKlassMap(refType);
+            
+            if (maybeNull_klassMap == null) {
+                // try to get a meaningful name; but default to normal "toString" in the exceptional case
+                String name = refType.toString();
+                try {
+                    name = refType.sourceName();
+                }
+                catch (Throwable e) {
+                    // discard
+                }
+                System.out.println("[luceedebug] class information for reftype " + name + " could not be retrieved.");
+                return;
+            }
+
+            final var klassMap = maybeNull_klassMap; // definitely non-null
+
+            var replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName);
+            klassMap_.put(klassMap.sourceName, klassMap);
             if (replayableBreakpointRequests != null) {
-                rebindBreakpoints(refType.sourceName(), replayableBreakpointRequests);
+                rebindBreakpoints(klassMap.sourceName, replayableBreakpointRequests);
             }
         }
         catch (Throwable e) {
@@ -562,29 +578,41 @@ public class CfVm implements ICfVm {
         // so we can avoid unnecessary try/catch if we hoist it out and just reference it as a field
         final public String sourceName; 
         final public HashMap<Integer, Location> lineMap;
+        
+        @SuppressWarnings("unused")
         final public ReferenceType refType;
 
-        KlassMap(ReferenceType refType) {
-            String sourceName = "";
-            HashMap<Integer, Location> lineMap = new HashMap<>();
+        private KlassMap(ReferenceType refType) throws AbsentInformationException {
+            String sourceName = refType.sourceName();
+            var lineMap = new HashMap<Integer, Location>();
+            
+            for (var loc : refType.allLineLocations()) {
+                lineMap.put(loc.lineNumber(), loc);
+            }
+
+            this.sourceName = sourceName;
+            this.lineMap = lineMap;
+            this.refType = refType;
+        }
+
+        /**
+         * May return null if ReferenceType throws an AbsentInformationException, which the caller
+         * should interpret as "we can't do anything meaningful with this file"
+         */
+        static KlassMap maybeNull_tryBuildKlassMap(ReferenceType refType) {
             try {
-                sourceName = refType.sourceName();
-                lineMap = new HashMap<Integer, Location>();
-                for (var loc : refType.allLineLocations()) {
-                    lineMap.put(loc.lineNumber(), loc);
-                }
+                return new KlassMap(refType);
+            }
+            catch (AbsentInformationException e) {
+                return null;
             }
             catch (Throwable e) {
                 e.printStackTrace();
                 System.exit(1);
             }
-            finally {
-                // appease the "final qualified field possibly not initialized" analyzer
-                // by doing this in a finally
-                this.sourceName = sourceName;
-                this.lineMap = lineMap;
-                this.refType = refType;
-            }
+
+            // unreachable
+            return null;
         }
     }
 
