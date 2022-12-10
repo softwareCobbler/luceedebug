@@ -8,6 +8,9 @@ import java.lang.ref.Cleaner.Cleanable;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import com.google.common.collect.MapMaker;
+import java.util.concurrent.ConcurrentMap;
+
 /**
  * weak auto cleaning multimap
  */
@@ -38,7 +41,11 @@ public class ValTracker {
     }
 
     private class Mapping {
-        final private WeakHashMap<Object, WeakReference<Wrapper_t>> vByObj = new WeakHashMap<>();
+        // todo: we could probably replace a lot of the valtracker/reftracker with these concurrent maps with weak keys?
+        final private ConcurrentMap<Object, WeakReference<Wrapper_t>> vByObj = new MapMaker()
+            .concurrencyLevel(/* default as per docs */ 4)
+            .weakKeys()
+            .makeMap();
         final private HashMap<Long, WeakReference<Wrapper_t>> vById = new HashMap<>();
 
         public void dropById(long id) {

@@ -24,8 +24,10 @@ dependencies {
     // Use JUnit Jupiter for testing.
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.2")
 
-    // This dependency is used by the application.
-    implementation("com.google.guava:guava:30.1.1-jre")
+    // https://mvnrepository.com/artifact/com.google.guava/guava
+    implementation("com.google.guava:guava:31.1-jre")
+
+
     implementation("org.ow2.asm:asm:9.3")
     implementation("org.ow2.asm:asm-util:9.3")
     implementation("org.ow2.asm:asm-commons:9.3")
@@ -76,7 +78,7 @@ tasks.shadowJar {
 // Shadow ALL dependencies:
 tasks.create<ConfigureShadowRelocation>("relocateShadowJar") {
     target = tasks["shadowJar"] as ShadowJar
-    prefix = "luceedebug-shadow"
+    prefix = "luceedebug_shadow"
 }
 
 tasks.register("makeMockCfSourceFile") {

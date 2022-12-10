@@ -1,5 +1,6 @@
 package luceedebug.coreinject;
 
+import java.lang.ref.Cleaner;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,6 +20,9 @@ import com.sun.jdi.*;
 import com.sun.jdi.event.*;
 import com.sun.jdi.request.*;
 
+import com.google.common.collect.MapMaker;
+import java.util.concurrent.ConcurrentMap;
+
 import luceedebug.*;
 
 public class CfVm implements ICfVm {
@@ -28,10 +32,17 @@ public class CfVm implements ICfVm {
 
     private final VirtualMachine vm_;
 
+    /**
+     * A multimap of (jdwp threadID -> jvm Thread) & (jvm Thread -> jdwp ThreadRef)
+     */
     private static class ThreadMap {
-        // leaks, need a cleaner for the WeakRef
+        private final Cleaner cleaner = Cleaner.create();
+
         private final ConcurrentHashMap</*jdwpID for thread*/Long, WeakReference<Thread>> threadByJdwpId = new ConcurrentHashMap<>();
-        private final WeakHashMap<Thread, ThreadReference> threadRefByThread = new WeakHashMap<>();
+        private final ConcurrentMap<Thread, ThreadReference> threadRefByThread = new MapMaker()
+            .concurrencyLevel(/* default as per docs */ 4)
+            .weakKeys()
+            .makeMap();
 
         public Thread getThreadByJdwpId(long jdwpId) {
             var weakRef = threadByJdwpId.get(jdwpId);
@@ -72,8 +83,15 @@ public class CfVm implements ICfVm {
         }
         
         public void register(Thread thread, ThreadReference threadRef) {
-            threadByJdwpId.put(threadRef.uniqueID(), new WeakReference<>(thread));
+            final long threadID = threadRef.uniqueID();
+            threadByJdwpId.put(threadID, new WeakReference<>(thread));
             threadRefByThread.put(thread, threadRef);
+            cleaner.register(threadRef, () -> {
+                // Manually remove from (threadID -> WeakRef<Thread>) mapping
+                // The (WeakRef<Thread> -> ThreadRef) map should be autocleaning by virtue of "weakKeys"
+                threadByJdwpId.remove(threadID);
+                System.out.println("[luceedebug] thread tracker dropped ref for threadID " + threadID);
+            });
         }
 
         public void unregister(ThreadReference threadRef) {

@@ -49,7 +49,7 @@ public class Felix extends ClassVisitor {
                     this.checkCast(Type.getType("Ljava/lang/String;"));
                     // [Map, String, String]
                     
-                    this.push(",com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug");
+                    this.push(",com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug,luceedebug_shadow.*");
                     // [Map, String, String, String]
                     
                     this.invokeVirtual(Type.getType("Ljava/lang/String;"), Method.getMethod("String concat(String)"));
