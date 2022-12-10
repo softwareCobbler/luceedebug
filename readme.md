@@ -5,11 +5,11 @@ luceedebug is a step debugger for Lucee.
 There are two components:
 
 - A Java agent
-- A VS Code plugin
+- A VS Code extension
 
 The java agent needs a particular invocation and needs to be run as part of JVM/CF server startup.
 
-The VS Code client plugin is not released on the VS Code plugin Marketplace, so it's easiest to run it locally, in an 'extension development host'.
+The VS Code client extension is not released on the VS Code Marketplace, so it's easiest to run it locally, in an 'extension development host'.
 
 ### Java Agent
 
@@ -42,9 +42,9 @@ The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortun
 
 (There didn't seem to be an immediately obvious way to pull the name of "the current" jar file from an agent's `premain`, but maybe it's just been overlooked. If you know let us know!)
 
-### VS Code Client
+### VS Code luceedebug Debugger Extension
 
-#### Build Client
+#### Build Extension
 
 Prerequisites:
 * `npm`
@@ -60,7 +60,7 @@ npm run build-dev-windows # windows
 npm run build-dev-linux # mac/linux
 ```
 
-#### Run Client
+#### Run Extension
 
 ```
 cd vscode-client
@@ -74,20 +74,27 @@ Steps to run the extension in VS Code's "extension development host":
 - Run the "extension" configuration
 - The extension development host window opens
 - Load your CF project from that VS Code instance
-- Add a CFML debug configuration (Run > Open Configurations)
+- Add a CFML debug configuration (Run > Open Configurations). (See the configuration example, below.)
 - Attach to the CF server
-- Set breakpoints, etc.
+  - With a CFML file open, click the "Run and Debug" icon in the left menu.
+  - In the select list labeled "Run and Debug," choose the name of the configuration you used in the `name` key of the debug configuration. (In the configuration example, below, it would be `Project A`.)
+  - Click the green "play" icon next to the select list, above.
+- General step debugging is documented [here](https://code.visualstudio.com/docs/editor/debugging), but the following is a synopsis.
+  - With a CFML file open, click in the margin to the left of the line number, which will set a breakpoint (represented by a red dot).
+  - Use your application in a way that would reach that line of code.
+  - The application will pause execution at that line of code and allow you to inspect the current state.
+  - The debug navigation buttons will allow you to continue execution or step into and out of functions, etc.
 
-### Plugin options
+### VS Code Extension Configuration
 
 A CFML debug configuration looks like:
 ```
 {
     "type": "cfml",
     "request": "attach",
-    "name": "Attach to server",
+    "name": "Project A",
     "hostName": "localhost",
-    "port": 8000,
+    "port": 10000,
     "pathTransform": { // optional
         "idePrefix": "${workspaceFolder}",
         "cfPrefix": "/app"

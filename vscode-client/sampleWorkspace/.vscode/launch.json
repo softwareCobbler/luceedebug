@@ -7,9 +7,9 @@
         {
             "type": "cfml",
             "request": "attach",
-            "name": "Attach to server",
+            "name": "Project A",
             "hostName": "localhost",
-            "port": 8000,
+            "port": 10000,
         }
     ]
 }
