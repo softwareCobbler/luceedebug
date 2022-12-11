@@ -90,7 +90,6 @@ public class CfVm implements ICfVm {
                 // Manually remove from (threadID -> WeakRef<Thread>) mapping
                 // The (WeakRef<Thread> -> ThreadRef) map should be autocleaning by virtue of "weakKeys"
                 threadByJdwpId.remove(threadID);
-                System.out.println("[luceedebug] thread tracker dropped ref for threadID " + threadID);
             });
         }
 

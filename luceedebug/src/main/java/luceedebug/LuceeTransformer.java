@@ -169,6 +169,25 @@ public class LuceeTransformer implements ClassFileTransformer {
 
             return classWriter.toByteArray();
         }
+        catch (MethodTooLargeException e) {
+            String baseName = e.getMethodName();
+            boolean targetMethodWasBeingInstrumented = false;
+
+            if (baseName.startsWith("__luceedebug__")) {
+                baseName = baseName.replaceFirst("__luceedebug__", "");
+                targetMethodWasBeingInstrumented = true;
+            }
+
+            if (targetMethodWasBeingInstrumented) {
+                System.err.println("[luceedebug] Method '" + baseName + "' in class '" + className + "' became too large after instrumentation (size="  + e.getCodeSize() + "). luceedebug won't be able to hit breakpoints in, or expose frame information for, this file.");
+            }
+            else {
+                // this shouldn't happen, we really should only get MethodTooLargeExceptions for code we were instrumenting
+                System.err.println("[luceedebug] Method " + baseName + " in class " + className + " was too large to for org.objectweb.asm to reemit.");
+            }
+
+            return classfileBuffer;
+        }
         catch (Throwable e) {
             System.err.println("[luceedebug] exception during attempted classfile rewrite");
             System.err.println(e.getMessage());
