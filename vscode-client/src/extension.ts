@@ -5,7 +5,11 @@ let currentDebugSession : vscode.DebugSession | null = null;
 class CfDebugAdapter implements vscode.DebugAdapterDescriptorFactory {
 	createDebugAdapterDescriptor(session: vscode.DebugSession, _executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
 		currentDebugSession = session;
-		return new vscode.DebugAdapterServer(parseInt(session.configuration.port));
+		
+		const host = session.configuration.hostName;
+		const port = parseInt(session.configuration.port);
+
+		return new vscode.DebugAdapterServer(port, host);
 	}
 	
 }
