@@ -42,6 +42,12 @@ dependencies {
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.15.0")
 }
 
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
+
 tasks.jar {
     manifest {
         attributes(
