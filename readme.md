@@ -9,7 +9,7 @@ There are two components:
 
 The java agent needs a particular invocation and needs to be run as part of JVM/CF server startup.
 
-The VS Code client plugin is not released on the VS Code plugin Marketplace, so it's easiest to run it locally, in an 'extension development host'.
+The VS Code client plugin is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
 ### Java Agent
 
