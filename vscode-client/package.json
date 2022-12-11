@@ -1,23 +1,36 @@
 {
-  "name": "cfls-debug",
-  "version": "1.0.0",
-  "description": "",
+  "name": "luceedebug",
+  "publisher": "DavidRogers",
+  "version": "2.0.0",
+  "description": "VS Code client for luceedebug backend.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-dev-windows": "tsc && node \"node_modules/esbuild/bin/esbuild\" ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js",
     "build-dev-linux":   "tsc && ./node_modules/esbuild/bin/esbuild        ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["ColdFusion", "debug", "debugger", "Lucee"],
+  "author": "David Rogers",
   "license": "ISC",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onDebugResolve:cfml"
   ],
+  "repository": {
+		"type": "git",
+		"url": "https://github.com/softwareCobbler/luceedebug"
+	},
   "engines": {
     "vscode": "^1.63.0"
   },
   "contributes": {
+    "languages": [
+			{
+				"id": "cfml",
+				"extensions": [".cfm", ".cfc", ".cfml"],
+				"aliases": ["ColdFusion", "CFML"],
+				"filenames": []
+			}
+		],
     "breakpoints": [
       {
         "language": "cfml"
