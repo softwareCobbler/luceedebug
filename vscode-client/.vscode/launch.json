@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 		{
-			"name": "Extension",
+			"name": "Launch luceedebug in Extension Development Host",
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
