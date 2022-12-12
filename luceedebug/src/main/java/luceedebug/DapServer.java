@@ -77,14 +77,28 @@ public class DapServer implements IDebugProtocolServer {
     }
 
     static public DapEntry createForSocket(ICfVm cfvm, String host, int port) {
-        var addr = new InetSocketAddress(host, port);
         try (var server = new ServerSocket()) {
+            var addr = new InetSocketAddress(host, port);
+            server.setReuseAddress(true);
+
+            System.out.println("[luceedebug] binding cf dap server socket on " + host + ":" + port);
+
             server.bind(addr);
+
+            System.out.println("[luceedebug] dap server socket bind OK");
+
             while (true) {
+                System.out.println("[luceedebug] listening for inbound debugger connection on " + host + ":" + port + "...");
+
                 var socket = server.accept();
+
+                System.out.println("[luceedebug] accepted debugger connection");
+
                 var dapEntry = create(cfvm, socket.getInputStream(), socket.getOutputStream());
                 var future = dapEntry.launcher.startListening();
                 future.get(); // block until the connection closes
+
+                System.out.println("[luceedebug] debugger connection closed");
             }
         }
         catch (Throwable e) {
@@ -112,7 +126,6 @@ public class DapServer implements IDebugProtocolServer {
     @Override
     public CompletableFuture<Void> attach(Map<String, Object> args) {
         var maybePathTransform = args.get("pathTransform");
-        System.out.println("pathTransform: " + maybePathTransform + " is classof " + maybePathTransform.getClass() + " is a map? " + (maybePathTransform instanceof Map));
 
         if (maybePathTransform != null && maybePathTransform instanceof Map) {
             var maybeIdePrefix = ((Map<?,?>)maybePathTransform).get("idePrefix");

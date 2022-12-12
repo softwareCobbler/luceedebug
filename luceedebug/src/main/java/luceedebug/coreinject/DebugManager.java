@@ -29,16 +29,18 @@ public class DebugManager {
      */
     @SuppressWarnings("unused")
     static public void spawnWorker(String jdwpHost, int jdwpPort, String cfHost, int cfPort) {
-
-        // do we need to touch DebugManager from <clinit> of PageContextImpl?
-        // then everything in DebugManager needs to be static
+        System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
-        var thread = new Thread(new Runnable() {
-            public void run() {
-                VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort); // jdwpPort
-                CfVm cfvm = new CfVm(vm);
-                DapServer.createForSocket(cfvm, cfHost, cfPort);
-            }
+
+        var thread = new Thread(() -> {
+            System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
+
+            VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
+            CfVm cfvm = new CfVm(vm);
+
+            System.out.println("[luceedebug] jdwp self connect OK");
+
+            DapServer.createForSocket(cfvm, cfHost, cfPort);
         }, threadName);
 
         thread.start();
