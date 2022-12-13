@@ -137,6 +137,8 @@ public class DapServer implements IDebugProtocolServer {
 
         clientProxy_.initialized();
 
+        System.out.println("[luceedebug] attached to frontend, using path transform " + pathTransform.asTraceString());
+
         return CompletableFuture.completedFuture(null);
     }
 
