@@ -45,7 +45,9 @@ Most java devs will be familiar with the `agentlib` part. We need JDWP running, 
 
 Note that JDWP `address` and luceedebug's `jdwpHost`/`jdwpPort` must match.
 
-The `cfPort` and `cfHost` options are the host/port that the VS Code debugger attaches to. Note that JDWP can usually listen on localhost (the connection to JDWP from luceedebug is a loopback connection), but if your server is in a docker container, the cfHost might have to be something that will listen to external connections coming into the container (e.g. 0.0.0.0 or etc. Don't do that in production.).
+The `cfPort` and `cfHost` options are the host/port that the VS Code debugger attaches to. Note that JDWP can usually listen on localhost (the connection to JDWP from luceedebug is a loopback connection).
+
+If Lucee is running in a docker container, the `cfHost` must be `0.0.0.0`. However, be careful not to do this on a publicly-accessible, unprotected server, as you could expose the debugger to the public (which would be a major security vulnerability).
 
 The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortunately we have to say its name twice! One tells the JVM which jar to use as a java agent, the second is an argument to the java agent about where to find the jar it will load debugging instrumentation from.
 
@@ -60,7 +62,8 @@ The VS Code luceedebug extension is available on the VS Code Marketplace. If you
 ##### Run the Extension
 
 - Go to the "run and debug" menu (looks like a bug with a play button)
-- Add a CFML debug configuration (Run > Open Configurations). (See the configuration example, below.)
+- Add a CFML debug configuration (if you haven't already--it only needs to be done once): Run > Open Configurations. (See the [configuration example, below](#vs-code-extension-configuration).)
+- Prime the Java agent by warming up your application. (E.g., request its home page.) Note: This step may eventually be obsoleted by #13.
 - Attach to the CF server
   - With a CFML file open, click the "Run and Debug" icon in the left menu.
   - In the select list labeled "Run and Debug," choose the name of the configuration you used in the `name` key of the debug configuration. (In the [configuration example, below](#vs-code-extension-configuration), it would be `Project A`.)
@@ -103,7 +106,7 @@ Steps to run the extension in VS Code's "extension development host":
 - In the select list labeled "Run and Debug," choose the "Launch luceedebug in Extension Development Host" option and click the green "play" icon to launch.
 - The extension development host window opens
 - Load your CF project from that VS Code instance
-- Continue to the "Add a CFML debug configuration" step in [Run the Extension](#run-the-extension)
+- Continue on to [Run the Extension](#run-the-extension)
 
 
 ### VS Code Extension Configuration
