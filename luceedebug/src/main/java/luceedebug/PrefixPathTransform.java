@@ -23,4 +23,8 @@ class PrefixPathTransform implements ICfPathTransform {
             return s;
         }
     }
+
+    public String asTraceString() {
+        return "PrefixPathTransform{idePrefix='" + idePrefix_ + "', cfPrefix='" + cfPrefix_ + "'}";
+    }
 }
