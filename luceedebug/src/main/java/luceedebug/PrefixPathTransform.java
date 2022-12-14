@@ -1,5 +1,7 @@
 package luceedebug;
 
+import java.util.Optional;
+
 class PrefixPathTransform implements ICfPathTransform {
     private final String idePrefix_;
     private final String cfPrefix_;
@@ -7,20 +9,20 @@ class PrefixPathTransform implements ICfPathTransform {
         this.idePrefix_ = idePrefix;
         this.cfPrefix_ = cfPrefix;
     }
-    public String cfToIde(String s) {
+    public Optional<String> cfToIde(String s) {
         if (s.startsWith(cfPrefix_)) {
-            return s.replace(cfPrefix_, idePrefix_);
+            return Optional.of(s.replace(cfPrefix_, idePrefix_));
         }
         else {
-            return s;
+            return Optional.empty();
         }
     }
-    public String ideToCf(String s) {
+    public Optional<String> ideToCf(String s) {
         if (s.startsWith(idePrefix_)) {
-            return s.replace(idePrefix_, cfPrefix_);
+            return Optional.of(s.replace(idePrefix_, cfPrefix_));
         }
         else {
-            return s;
+            return Optional.empty();
         }
     }
 

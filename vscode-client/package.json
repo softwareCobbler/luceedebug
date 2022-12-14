@@ -1,7 +1,7 @@
 {
   "name": "luceedebug",
   "publisher": "DavidRogers",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "VS Code client for luceedebug backend.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -66,17 +66,23 @@
                 "type": "string",
                 "description": "Hostname (i.e. `localhost`) or address, of server on which the target Lucee server is running."
               },
-              "pathTransform": {
-                "type": "object",
-                "description": "Transform source file paths (e.g. if in your IDE, you are editing '/foo/bar/baz.cfc', but the cf engine knows it as '/app/bar/baz.cfc', it needs to be transformed.",
-                "properties": {
-                  "idePrefix": "string",
-                  "cfPrefix": "string"
+              "pathTransforms": {
+                "type": "array",
+                "description": "Ordered list of source file path transforms (e.g. if in your IDE, you are editing '/foo/bar/baz.cfc', but the cf engine knows it as '/app/bar/baz.cfc', it needs to be transformed). The first one that matches for a particular need 'wins'. If none match (or the list is empty), no paths are transformed.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                      "idePrefix": {"type": "string", "default": "${workspaceFolder}"},
+                      "cfPrefix": {"type": "string", "default": "/container-root/app"}
+                    },
+                    "required": ["idePrefix", "cfPrefix"]
                 },
-                "default": {
-                  "idePrefix": "${workspaceFolder}",
-                  "cfPrefix": "/app"
-                }
+                "default": [
+                  {
+                    "idePrefix": "${workspaceFolder}",
+                    "cfPrefix": "/container-root/app"
+                  }
+                ]
               }
             }
           }
@@ -106,5 +112,10 @@
   },
   "devDependencies": {
     "esbuild": "^0.14.5"
+  },
+  "$defs": {
+    "foo": {
+
+    }               
   }
 }

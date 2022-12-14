@@ -500,7 +500,7 @@ public class CfVm implements ICfVm {
             if (replayableBreakpointRequests != null) {
                 rebindBreakpoints(klassMap.sourceName, replayableBreakpointRequests);
             }
-            System.out.println("[luceedebug] tracking '" + klassMap.sourceName + "' (type=" + refType + ")");
+            System.out.println("[luceedebug] tracking '" + klassMap.sourceName + "'");
         }
         catch (Throwable e) {
             e.printStackTrace();

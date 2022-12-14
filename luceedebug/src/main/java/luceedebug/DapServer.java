@@ -6,9 +6,15 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
+import org.checkerframework.checker.nullness.qual.NonNull;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
@@ -17,7 +23,41 @@ import org.eclipse.lsp4j.jsonrpc.Launcher;
 
 public class DapServer implements IDebugProtocolServer {
     private final ICfVm cfvm_;
-    private ICfPathTransform pathTransform = new IdentityPathTransform();
+    private ArrayList<ICfPathTransform> pathTransforms = new ArrayList<>();
+
+    interface TransformRunner {
+        Optional<String> run(ICfPathTransform transform, String s);
+    }
+    
+    /**
+     * runs all the transforms until one matches and produces a result
+     * if no transform matches, returns the input string unmodified
+     */
+    private String applyPathTransforms(String s, TransformRunner runner) {
+        for (var transform : pathTransforms) {
+            var result = runner.run(transform, s);
+            if (result.isPresent()) {
+                return result.get();
+            }
+        }
+        // no transform matched
+        return s;
+    }
+
+    private String applyPathTransformsIdeToCf(String s) {
+        return applyPathTransforms(
+            s,
+            (transform, path) -> transform.ideToCf(path)
+        );
+    }
+    
+    private String applyPathTransformsCfToIde(String s) {
+        return applyPathTransforms(
+            s,
+            (transform, path) -> transform.cfToIde(path)
+        );
+    }
+
     private IDebugProtocolClient clientProxy_;
 
     private DapServer(ICfVm cfvm) {
@@ -123,21 +163,57 @@ public class DapServer implements IDebugProtocolServer {
         return CompletableFuture.completedFuture(c);
     }
 
-    @Override
-    public CompletableFuture<Void> attach(Map<String, Object> args) {
-        var maybePathTransform = args.get("pathTransform");
+    private ICfPathTransform mungeOnePathTransform(Map<?,?> map) {
+        var maybeIdePrefix = map.get("idePrefix");
+        var maybeCfPrefix = map.get("cfPrefix");
+        if (maybeCfPrefix instanceof String && maybeIdePrefix instanceof String) {
+            return new PrefixPathTransform((String)maybeIdePrefix, (String)maybeCfPrefix);
+        }
+        else {
+            return null;
+        }
+    }
 
-        if (maybePathTransform != null && maybePathTransform instanceof Map) {
-            var maybeIdePrefix = ((Map<?,?>)maybePathTransform).get("idePrefix");
-            var maybeCfPrefix = ((Map<?,?>)maybePathTransform).get("cfPrefix");
-            if (maybeCfPrefix != null && maybeIdePrefix != null && maybeCfPrefix instanceof String && maybeIdePrefix instanceof String) {
-                pathTransform = new PrefixPathTransform((String)maybeIdePrefix, (String)maybeCfPrefix);
+    private ArrayList<ICfPathTransform> tryMungePathTransforms(Object maybeNull_val) {
+        final var result = new ArrayList<ICfPathTransform>();
+        if (maybeNull_val instanceof List) {
+            for (var e : ((List<?>)maybeNull_val)) {
+                if (e instanceof Map) {
+                    var maybeNull_result = mungeOnePathTransform((Map<?,?>)e);
+                    if (maybeNull_result != null) {
+                        result.add(maybeNull_result);
+                    }
+                }
+            }
+            return result;
+        }
+        else if (maybeNull_val instanceof Map) {
+            var maybeNull_result = mungeOnePathTransform((Map<?,?>)maybeNull_val);
+            if (maybeNull_result != null) {
+                result.add(maybeNull_result);
             }
         }
+        else {
+            // no-op, leave the list empty
+        }
+        return result;
+    }
+
+    @Override
+    public CompletableFuture<Void> attach(Map<String, Object> args) {
+        pathTransforms = tryMungePathTransforms(args.get("pathTransforms"));
 
         clientProxy_.initialized();
 
-        System.out.println("[luceedebug] attached to frontend, using path transform " + pathTransform.asTraceString());
+        if (pathTransforms.size() == 0) {
+            System.out.println("[luceedebug] attached to frontend, using path transforms <none>");
+        }
+        else {
+            System.out.println("[luceedebug] attached to frontend, using path transforms:");
+            for (var transform : pathTransforms) {
+                System.out.println(transform.asTraceString());
+            }
+        }
 
         return CompletableFuture.completedFuture(null);
     }
@@ -169,7 +245,7 @@ public class DapServer implements IDebugProtocolServer {
 
         for (var cfFrame : cfvm_.getStackTrace(args.getThreadId())) {
             final var source = new Source();
-            source.setPath(pathTransform.cfToIde(cfFrame.getSourceFilePath()));
+            source.setPath(applyPathTransformsCfToIde(cfFrame.getSourceFilePath()));
     
             final var lspFrame = new org.eclipse.lsp4j.debug.StackFrame();
             lspFrame.setId((int)cfFrame.getId());
@@ -223,7 +299,7 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var absPath = pathTransform.ideToCf(args.getSource().getPath());
+        final var absPath = applyPathTransformsIdeToCf(args.getSource().getPath());
         System.out.println("bp for " + args.getSource().getPath() + " -> " + absPath);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
