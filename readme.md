@@ -119,23 +119,28 @@ A CFML debug configuration looks like:
     "name": "Project A",
     "hostName": "localhost",
     "port": 10000,
-    "pathTransform": { // optional
+    // optional
+    "pathTransforms": [
+      {
         "idePrefix": "${workspaceFolder}",
         "cfPrefix": "/app"
-    }
+      }
+    ]
 }
 ```
 Hostname and port should match the `cfHost` and `cfPort` you've configured the java agent with.
 
-`pathTransform` maps between "IDE paths" and "CF server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
+`pathTransforms` maps between "IDE paths" and "CF server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
 
 Currently, it is a simple prefix replacement, e.g.:
 
 ```
-"pathTransform": {
+"pathTransforms": [
+  {
     "idePrefix": "/foo",
     "cfPrefix": "/serverAppRoot"
-}
+  }
+]
 
 ide says
  "set a breakpoint in '/foo/bar/baz/TheThing.cfc'
@@ -148,4 +153,4 @@ ide will understand it as
  "hit a breakpoint in '/foo/bar/baz/TheThing.cfc'"
 ```
 
-Omitting a `pathTransform` means no path transformation will take place.
+Omitting `pathTransforms` means no path transformation will take place.

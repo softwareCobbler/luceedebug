@@ -93,10 +93,12 @@
             "request": "attach",
             "name": "Attach to server",
             "hostName": "localhost",
-            "pathTransform": {
-              "idePrefix": "${workspaceFolder}",
-              "cfPrefix": "/app"
-            },
+            "pathTransforms": [
+              {
+                "idePrefix": "${workspaceFolder}",
+                "cfPrefix": "/app"
+              }
+            ],
             "port": 8000
           }
         ],
