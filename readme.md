@@ -112,7 +112,7 @@ Steps to run the extension in VS Code's "extension development host":
 ### VS Code Extension Configuration
 
 A CFML debug configuration looks like:
-```
+```json
 {
     "type": "cfml",
     "request": "attach",
@@ -130,27 +130,47 @@ A CFML debug configuration looks like:
 ```
 Hostname and port should match the `cfHost` and `cfPort` you've configured the java agent with.
 
+#### Mapping Paths with `pathTransforms`
+
 `pathTransforms` maps between "IDE paths" and "CF server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
 
 Currently, it is a simple prefix replacement, e.g.:
 
-```
+```json
 "pathTransforms": [
   {
     "idePrefix": "/foo",
     "cfPrefix": "/serverAppRoot"
   }
 ]
-
-ide says
- "set a breakpoint in '/foo/bar/baz/TheThing.cfc'
-server will understand it as
- "set a breakpoint in '/serverAppRoot/bar/baz/TheThing.cfc'
-
-server says
- "hit a breakpoint in '/serverAppRoot/bar/baz/TheThing.cfc'
-ide will understand it as
- "hit a breakpoint in '/foo/bar/baz/TheThing.cfc'"
 ```
 
+In the above example, the IDE would announce, "set a breakpoint in `/foo/bar/baz/TheThing.cfc`, which the server will understand as, "set a breakpoint in `/serverAppRoot/bar/baz/TheThing.cfc`".
+
 Omitting `pathTransforms` means no path transformation will take place.
+
+Multiple `pathTransforms`  may be specified if more than one mapping is needed. The first match wins.
+
+Example:
+
+```json
+"pathTransforms": [
+  {
+    "idePrefix": "/Users/sc/projects/subapp_b_helper",
+    "cfPrefix": "/var/www/subapp/b/helper"
+  },
+  {
+    "idePrefix": "/Users/sc/projects/subapp_b",
+    "cfPrefix": "/var/www/subapp/b"
+  },
+  {
+    "idePrefix": "/Users/sc/projects/app",
+    "cfPrefix": "/var/www"
+  }
+]
+```
+
+In this example:
+
+* A breakpoint set on `/Users/sc/projects/app/Application.cfc` will match the last transform and map to `/var/www/Application.cfc` on the server.
+* A breakpoint set on `/var/www/subapp/b/helper/HelpUtil.cfc` will match the first transform and map to `/var/www/subapp/b/helper/HelpUtil.cfc` on the server.
