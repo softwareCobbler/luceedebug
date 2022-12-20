@@ -2,12 +2,12 @@ package luceedebug;
 
 import java.util.Optional;
 
-interface ICfPathTransform {
+interface IPathTransform {
     
     /** empty if no match, never null */
-    public Optional<String> cfToIde(String s);
+    public Optional<String> serverToIde(String s);
     /** empty if no match, never null */
-    public Optional<String> ideToCf(String s);
+    public Optional<String> ideToServer(String s);
 
     /**
      * like toString, but contractually for trace purposes

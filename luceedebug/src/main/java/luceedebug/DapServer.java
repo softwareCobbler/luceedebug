@@ -10,11 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.checkerframework.checker.nullness.qual.Nullable;
 import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
@@ -22,11 +18,11 @@ import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 
 public class DapServer implements IDebugProtocolServer {
-    private final ICfVm cfvm_;
-    private ArrayList<ICfPathTransform> pathTransforms = new ArrayList<>();
+    private final ILuceeVm luceeVm_;
+    private ArrayList<IPathTransform> pathTransforms = new ArrayList<>();
 
     interface TransformRunner {
-        Optional<String> run(ICfPathTransform transform, String s);
+        Optional<String> run(IPathTransform transform, String s);
     }
     
     /**
@@ -47,23 +43,23 @@ public class DapServer implements IDebugProtocolServer {
     private String applyPathTransformsIdeToCf(String s) {
         return applyPathTransforms(
             s,
-            (transform, path) -> transform.ideToCf(path)
+            (transform, path) -> transform.ideToServer(path)
         );
     }
     
     private String applyPathTransformsCfToIde(String s) {
         return applyPathTransforms(
             s,
-            (transform, path) -> transform.cfToIde(path)
+            (transform, path) -> transform.serverToIde(path)
         );
     }
 
     private IDebugProtocolClient clientProxy_;
 
-    private DapServer(ICfVm cfvm) {
-        this.cfvm_ = cfvm;
+    private DapServer(ILuceeVm luceeVm) {
+        this.luceeVm_ = luceeVm;
 
-        this.cfvm_.registerStepEventCallback(i64_threadID -> {
+        this.luceeVm_.registerStepEventCallback(i64_threadID -> {
             final var i32_threadID = (int)(long)i64_threadID;
             var event = new StoppedEventArguments();
             event.setReason("step");
@@ -71,7 +67,7 @@ public class DapServer implements IDebugProtocolServer {
             clientProxy_.stopped(event);
         });
 
-        this.cfvm_.registerBreakpointEventCallback((i64_threadID, i32_bpID) -> {
+        this.luceeVm_.registerBreakpointEventCallback((i64_threadID, i32_bpID) -> {
             System.out.println("(breakpoint callback in dapserver) threadID=" + i64_threadID + ", bpID=" + i32_bpID);
             final int i32_threadID = (int)(long)i64_threadID;
             var event = new StoppedEventArguments();
@@ -81,7 +77,7 @@ public class DapServer implements IDebugProtocolServer {
             clientProxy_.stopped(event);
         });
 
-        this.cfvm_.registerBreakpointsChangedCallback((bpChangedEvent) -> {
+        this.luceeVm_.registerBreakpointsChangedCallback((bpChangedEvent) -> {
             for (var newBreakpoint : bpChangedEvent.newBreakpoints) {
                 var bpEvent = new BreakpointEventArguments();
                 bpEvent.setBreakpoint(map_cfBreakpoint_to_lsp4jBreakpoint(newBreakpoint));
@@ -116,7 +112,7 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
-    static public DapEntry createForSocket(ICfVm cfvm, String host, int port) {
+    static public DapEntry createForSocket(ILuceeVm luceeVm, String host, int port) {
         try (var server = new ServerSocket()) {
             var addr = new InetSocketAddress(host, port);
             server.setReuseAddress(true);
@@ -134,7 +130,7 @@ public class DapServer implements IDebugProtocolServer {
 
                 System.out.println("[luceedebug] accepted debugger connection");
 
-                var dapEntry = create(cfvm, socket.getInputStream(), socket.getOutputStream());
+                var dapEntry = create(luceeVm, socket.getInputStream(), socket.getOutputStream());
                 var future = dapEntry.launcher.startListening();
                 future.get(); // block until the connection closes
 
@@ -148,8 +144,8 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
-    static public DapEntry create(ICfVm cfvm, InputStream in, OutputStream out) {
-        var server = new DapServer(cfvm);
+    static public DapEntry create(ILuceeVm luceeVm, InputStream in, OutputStream out) {
+        var server = new DapServer(luceeVm);
         var serverLauncher = DSPLauncher.createServerLauncher(server, in, out);
         server.clientProxy_ = serverLauncher.getRemoteProxy();
         return new DapEntry(server, serverLauncher);
@@ -163,19 +159,22 @@ public class DapServer implements IDebugProtocolServer {
         return CompletableFuture.completedFuture(c);
     }
 
-    private ICfPathTransform mungeOnePathTransform(Map<?,?> map) {
+    private IPathTransform mungeOnePathTransform(Map<?,?> map) {
         var maybeIdePrefix = map.get("idePrefix");
-        var maybeCfPrefix = map.get("cfPrefix");
-        if (maybeCfPrefix instanceof String && maybeIdePrefix instanceof String) {
-            return new PrefixPathTransform((String)maybeIdePrefix, (String)maybeCfPrefix);
+
+        // cfPrefix is deprecated in favor of serverPrefix
+        var maybeServerPrefix = map.containsKey("cfPrefix") ? map.get("cfPrefix") : map.get("serverPrefix");
+
+        if (maybeServerPrefix instanceof String && maybeIdePrefix instanceof String) {
+            return new PrefixPathTransform((String)maybeIdePrefix, (String)maybeServerPrefix);
         }
         else {
             return null;
         }
     }
 
-    private ArrayList<ICfPathTransform> tryMungePathTransforms(Object maybeNull_val) {
-        final var result = new ArrayList<ICfPathTransform>();
+    private ArrayList<IPathTransform> tryMungePathTransforms(Object maybeNull_val) {
+        final var result = new ArrayList<IPathTransform>();
         if (maybeNull_val instanceof List) {
             for (var e : ((List<?>)maybeNull_val)) {
                 if (e instanceof Map) {
@@ -224,7 +223,7 @@ public class DapServer implements IDebugProtocolServer {
     public CompletableFuture<ThreadsResponse> threads() {
         var lspThreads = new ArrayList<org.eclipse.lsp4j.debug.Thread>();
 
-        for (var threadRef : cfvm_.getThreadListing()) {
+        for (var threadRef : luceeVm_.getThreadListing()) {
             var lspThread = new org.eclipse.lsp4j.debug.Thread();
             lspThread.setId((int)threadRef.uniqueID());
             lspThread.setName(threadRef.name());
@@ -243,7 +242,7 @@ public class DapServer implements IDebugProtocolServer {
     public CompletableFuture<StackTraceResponse> stackTrace(StackTraceArguments args) {
         var lspFrames = new ArrayList<org.eclipse.lsp4j.debug.StackFrame>();
 
-        for (var cfFrame : cfvm_.getStackTrace(args.getThreadId())) {
+        for (var cfFrame : luceeVm_.getStackTrace(args.getThreadId())) {
             final var source = new Source();
             source.setPath(applyPathTransformsCfToIde(cfFrame.getSourceFilePath()));
     
@@ -266,7 +265,7 @@ public class DapServer implements IDebugProtocolServer {
     @Override
 	public CompletableFuture<ScopesResponse> scopes(ScopesArguments args) {
         var scopes = new ArrayList<Scope>();
-        for (var entity : cfvm_.getScopes(args.getFrameId())) {
+        for (var entity : luceeVm_.getScopes(args.getFrameId())) {
             var scope = new Scope();
             scope.setName(entity.getName());
             scope.setVariablesReference((int)entity.getVariablesReference());
@@ -283,7 +282,7 @@ public class DapServer implements IDebugProtocolServer {
 	@Override
 	public CompletableFuture<VariablesResponse> variables(VariablesArguments args) {
         var variables = new ArrayList<Variable>();
-        for (var entity : cfvm_.getVariables(args.getVariablesReference())) {
+        for (var entity : luceeVm_.getVariables(args.getVariablesReference())) {
             var variable = new Variable();
             variable.setName(entity.getName());
             variable.setVariablesReference((int)entity.getVariablesReference());
@@ -308,7 +307,7 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (var cfBreakpoint : cfvm_.bindBreakpoints(absPath, lines)) {
+        for (var cfBreakpoint : luceeVm_.bindBreakpoints(absPath, lines)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(cfBreakpoint));
         }
         
@@ -356,32 +355,32 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
 	public CompletableFuture<Void> disconnect(DisconnectArguments args) {
-        cfvm_.clearAllBreakpoints();
-        cfvm_.continueAll();
+        luceeVm_.clearAllBreakpoints();
+        luceeVm_.continueAll();
 		return CompletableFuture.completedFuture(null);
 	}
 
     @Override
 	public CompletableFuture<ContinueResponse> continue_(ContinueArguments args) {
-		cfvm_.continue_(args.getThreadId());
+		luceeVm_.continue_(args.getThreadId());
         return CompletableFuture.completedFuture(new ContinueResponse());
 	}
 
     @Override
 	public CompletableFuture<Void> next(NextArguments args) {
-		cfvm_.stepOver(args.getThreadId());
+		luceeVm_.stepOver(args.getThreadId());
         return CompletableFuture.completedFuture(null);
 	}
 
     @Override
 	public CompletableFuture<Void> stepIn(StepInArguments args) {
-        cfvm_.stepIn(args.getThreadId());
+        luceeVm_.stepIn(args.getThreadId());
 		return CompletableFuture.completedFuture(null);
 	}
 
 	@Override
 	public CompletableFuture<Void> stepOut(StepOutArguments args) {
-        cfvm_.stepOut(args.getThreadId());
+        luceeVm_.stepOut(args.getThreadId());
 		return CompletableFuture.completedFuture(null);
 	}
 

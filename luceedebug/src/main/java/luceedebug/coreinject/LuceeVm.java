@@ -7,7 +7,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,7 +24,7 @@ import java.util.concurrent.ConcurrentMap;
 
 import luceedebug.*;
 
-public class CfVm implements ICfVm {
+public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
     // "step finalization" breakpoints will not have this, so lookup against it will yield null
     final static private String LUCEEDEBUG_BREAKPOINT_ID = "luceedebug-breakpoint-id";
@@ -241,7 +240,7 @@ public class CfVm implements ICfVm {
             request.setEnabled(true);
         }
         else if (pageRef.size() == 1) {
-            // we hoped it would be this easy, but when we initialize CfVm, lucee.runtime.Page is probably not loaded yet
+            // we hoped it would be this easy, but when we initialize LuceeVm, lucee.runtime.Page is probably not loaded yet
             bootClassTracking(pageRef.get(0));
         }
         else {
@@ -264,7 +263,7 @@ public class CfVm implements ICfVm {
     private JdwpStaticCallable bootThreadWorker() {
         JdwpWorker.touch();
 
-        final String className = "luceedebug.coreinject.CfVm$JdwpWorker";
+        final String className = "luceedebug.coreinject.LuceeVm$JdwpWorker";
         final var refs = vm_.classesByName(className);
         if (refs.size() != 1) {
             System.out.println("Expected 1 ref for class " + className + " but got " + refs.size());
@@ -308,7 +307,7 @@ public class CfVm implements ICfVm {
         return new JdwpStaticCallable(((ClassType)refType.classObject().reflectedType()), jdwp_getThread);
     }
 
-    public CfVm(VirtualMachine vm) {
+    public LuceeVm(VirtualMachine vm) {
         this.vm_ = vm;
         this.asyncWorker_.start();
         
