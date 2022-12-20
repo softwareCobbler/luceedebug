@@ -7,7 +7,7 @@ There are two components:
 - A Java agent
 - A VS Code extension
 
-The java agent needs a particular invocation and needs to be run as part of JVM/CF server startup.
+The java agent needs a particular invocation and needs to be run as part of JVM/Lucee server startup.
 
 The VS Code client extension is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
@@ -64,7 +64,7 @@ The VS Code luceedebug extension is available on the VS Code Marketplace. If you
 - Go to the "run and debug" menu (looks like a bug with a play button)
 - Add a CFML debug configuration (if you haven't already--it only needs to be done once): Run > Open Configurations. (See the [configuration example, below](#vs-code-extension-configuration).)
 - Prime the Java agent by warming up your application. (E.g., request its home page.) Note: This step may eventually be obsoleted by #13.
-- Attach to the CF server
+- Attach to the Lucee server
   - With a CFML file open, click the "Run and Debug" icon in the left menu.
   - In the select list labeled "Run and Debug," choose the name of the configuration you used in the `name` key of the debug configuration. (In the [configuration example, below](#vs-code-extension-configuration), it would be `Project A`.)
   - Click the green "play" icon next to the select list, above.
@@ -105,7 +105,7 @@ Steps to run the extension in VS Code's "extension development host":
 - Go to the "run and debug" menu (looks like a bug with a play button)
 - In the select list labeled "Run and Debug," choose the "Launch luceedebug in Extension Development Host" option and click the green "play" icon to launch.
 - The extension development host window opens
-- Load your CF project from that VS Code instance
+- Load your Lucee project from that VS Code instance
 - Continue on to [Run the Extension](#run-the-extension)
 
 
@@ -132,7 +132,7 @@ Hostname and port should match the `cfHost` and `cfPort` you've configured the j
 
 #### Mapping Paths with `pathTransforms`
 
-`pathTransforms` maps between "IDE paths" and "CF server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
+`pathTransforms` maps between "IDE paths" and "Lucee server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
 
 Currently, it is a simple prefix replacement, e.g.:
 
