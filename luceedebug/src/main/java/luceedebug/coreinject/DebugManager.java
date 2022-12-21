@@ -32,18 +32,15 @@ public class DebugManager {
         System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
 
-        var thread = new Thread(() -> {
-            System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
+        System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
 
-            VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
-            CfVm cfvm = new CfVm(vm);
+        VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
+        CfVm cfvm = new CfVm(vm);
 
+        new Thread(() -> {
             System.out.println("[luceedebug] jdwp self connect OK");
-
             DapServer.createForSocket(cfvm, cfHost, cfPort);
-        }, threadName);
-
-        thread.start();
+        }, threadName).start();
     }
 
     static AttachingConnector getConnector() {

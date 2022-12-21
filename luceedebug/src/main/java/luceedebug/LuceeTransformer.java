@@ -73,14 +73,25 @@ public class LuceeTransformer implements ClassFileTransformer {
                 m.setAccessible(true);
 
                 for (var injection : pendingCoreLoaderClassInjections) {
-                    // warn: reflection is illegal in 17+, maybe earlier
-                    // What, we need to go to JNI to do this?
+                    // warn: reflection ... when does that become unsupported?
                     m.invoke(luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
                 }
                 
                 pendingCoreLoaderClassInjections = null;
+
+                try {
+                    final var klass = luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
+                    System.out.println("[luceedebug] Loaded " + klass + " with ClassLoader '" + klass.getClassLoader() + "'");
+                    klass
+                        .getMethod("spawnWorker", String.class, int.class, String.class, int.class)
+                        .invoke(null, jdwpHost, jdwpPort, cfHost, cfPort);
+                }
+                catch (Throwable e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
                 
-                return instrumentPageContextImpl(classfileBuffer);
+                return classfileBuffer;
             }
             catch (Throwable e) {
                 e.printStackTrace();
@@ -89,6 +100,7 @@ public class LuceeTransformer implements ClassFileTransformer {
             }
         }
         else if (superClass.equals("lucee/runtime/ComponentPageImpl") || superClass.equals("lucee/runtime/PageImpl")) {
+            System.out.println("[luceedebug] Instrumenting " + className);
             long start = System.nanoTime();
             if (luceeCoreLoader == null) {
                 System.out.println("Got class " + className + " before receiving PageContextImpl, debugging will fail.");
