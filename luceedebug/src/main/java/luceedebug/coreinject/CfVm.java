@@ -237,7 +237,7 @@ public class CfVm implements ICfVm {
         if (pageRef.size() == 0) {
             var request = vm_.eventRequestManager().createClassPrepareRequest();
             request.addClassFilter("lucee.runtime.Page");
-            request.setSuspendPolicy(EventRequest.SUSPEND_NONE);
+            request.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
             request.setEnabled(true);
         }
         else if (pageRef.size() == 1) {
@@ -523,6 +523,10 @@ public class CfVm implements ICfVm {
             // track class prepare events for all subtypes of lucee.runtime.Page
             vm_.eventRequestManager().deleteEventRequest(event.request());
             bootClassTracking(event.referenceType());
+            // We are required to have suspended the thread,
+            // otherwise we may have just missed a bunch of subtypes of lucee.runtime.Page getting classPrepare'd.
+            // Now that we have registered our request to track those class types, we can keep going.
+            event.thread().resume();
         }
         else {
             trackClassRef(event.referenceType());
