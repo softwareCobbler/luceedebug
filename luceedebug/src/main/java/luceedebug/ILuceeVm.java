@@ -5,7 +5,7 @@ import java.util.function.Consumer;
 
 import com.sun.jdi.*;
 
-public interface ICfVm {
+public interface ILuceeVm {
     public void registerStepEventCallback(Consumer</*threadID*/Long> cb);
     public void registerBreakpointEventCallback(BiConsumer</*threadID*/Long, /*bpID*/Integer> cb);
 

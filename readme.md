@@ -38,16 +38,16 @@ Add the following to your java invocation. (Tomcat users can use the `setenv.sh`
 ```
 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:9999
 
--javaagent:/abspath/to/luceedebug.jar=jdwpHost=localhost,jdwpPort=9999,cfHost=0.0.0.0,cfPort=10000,jarPath=/abspath/to/luceedebug.jar
+-javaagent:/abspath/to/luceedebug.jar=jdwpHost=localhost,jdwpPort=9999,debugHost=0.0.0.0,debugPort=10000,jarPath=/abspath/to/luceedebug.jar
 ```
 
 Most java devs will be familiar with the `agentlib` part. We need JDWP running, listening on a socket on localhost. luceedebug will attach to JDWP over a socket, running from within the same JVM. It stays attached for the life of the JVM.
 
 Note that JDWP `address` and luceedebug's `jdwpHost`/`jdwpPort` must match.
 
-The `cfPort` and `cfHost` options are the host/port that the VS Code debugger attaches to. Note that JDWP can usually listen on localhost (the connection to JDWP from luceedebug is a loopback connection).
+The `debugPort` and `debugHost` options are the host/port that the VS Code debugger attaches to. Note that JDWP can usually listen on localhost (the connection to JDWP from luceedebug is a loopback connection).
 
-If Lucee is running in a docker container, the `cfHost` must be `0.0.0.0`. However, be careful not to do this on a publicly-accessible, unprotected server, as you could expose the debugger to the public (which would be a major security vulnerability).
+If Lucee is running in a docker container, the `debugHost` must be `0.0.0.0`. However, be careful not to do this on a publicly-accessible, unprotected server, as you could expose the debugger to the public (which would be a major security vulnerability).
 
 The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortunately we have to say its name twice! One tells the JVM which jar to use as a java agent, the second is an argument to the java agent about where to find the jar it will load debugging instrumentation from.
 
@@ -123,12 +123,12 @@ A CFML debug configuration looks like:
     "pathTransforms": [
       {
         "idePrefix": "${workspaceFolder}",
-        "cfPrefix": "/app"
+        "serverPrefix": "/app"
       }
     ]
 }
 ```
-Hostname and port should match the `cfHost` and `cfPort` you've configured the java agent with.
+Hostname and port should match the `debugHost` and `debugPort` you've configured the java agent with.
 
 #### Mapping Paths with `pathTransforms`
 
@@ -140,7 +140,7 @@ Currently, it is a simple prefix replacement, e.g.:
 "pathTransforms": [
   {
     "idePrefix": "/foo",
-    "cfPrefix": "/serverAppRoot"
+    "serverPrefix": "/serverAppRoot"
   }
 ]
 ```
@@ -157,15 +157,15 @@ Example:
 "pathTransforms": [
   {
     "idePrefix": "/Users/sc/projects/subapp_b_helper",
-    "cfPrefix": "/var/www/subapp/b/helper"
+    "serverPrefix": "/var/www/subapp/b/helper"
   },
   {
     "idePrefix": "/Users/sc/projects/subapp_b",
-    "cfPrefix": "/var/www/subapp/b"
+    "serverPrefix": "/var/www/subapp/b"
   },
   {
     "idePrefix": "/Users/sc/projects/app",
-    "cfPrefix": "/var/www"
+    "serverPrefix": "/var/www"
   }
 ]
 ```

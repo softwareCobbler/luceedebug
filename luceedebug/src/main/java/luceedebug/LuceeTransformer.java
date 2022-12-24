@@ -17,8 +17,8 @@ public class LuceeTransformer implements ClassFileTransformer {
 
     private final String jdwpHost;
     private final int jdwpPort;
-    private final String cfHost;
-    private final int cfPort;
+    private final String debugHost;
+    private final int debugPort;
 
     static public class ClassInjection {
         final String name;
@@ -40,15 +40,15 @@ public class LuceeTransformer implements ClassFileTransformer {
         ClassInjection[] injections,
         String jdwpHost,
         int jdwpPort,
-        String cfHost,
-        int cfPort
+        String debugHost,
+        int debugPort
     ) {
         this.pendingCoreLoaderClassInjections = injections;
 
         this.jdwpHost = jdwpHost;
         this.jdwpPort = jdwpPort;
-        this.cfHost = cfHost;
-        this.cfPort = cfPort;
+        this.debugHost = debugHost;
+        this.debugPort = debugPort;
     }
 
     public byte[] transform(ClassLoader loader,
@@ -84,7 +84,7 @@ public class LuceeTransformer implements ClassFileTransformer {
                     System.out.println("[luceedebug] Loaded " + klass + " with ClassLoader '" + klass.getClassLoader() + "'");
                     klass
                         .getMethod("spawnWorker", String.class, int.class, String.class, int.class)
-                        .invoke(null, jdwpHost, jdwpPort, cfHost, cfPort);
+                        .invoke(null, jdwpHost, jdwpPort, debugHost, debugPort);
                 }
                 catch (Throwable e) {
                     e.printStackTrace();
@@ -148,7 +148,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         var classWriter = new ClassWriter(/*ClassWriter.COMPUTE_FRAMES |*/ ClassWriter.COMPUTE_MAXS);
 
         try {
-            var instrumenter = new luceedebug.instrumenter.PageContextImpl(Opcodes.ASM9, classWriter, jdwpHost, jdwpPort, cfHost, cfPort);
+            var instrumenter = new luceedebug.instrumenter.PageContextImpl(Opcodes.ASM9, classWriter, jdwpHost, jdwpPort, debugHost, debugPort);
             var classReader = new ClassReader(classfileBuffer);
 
             classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);

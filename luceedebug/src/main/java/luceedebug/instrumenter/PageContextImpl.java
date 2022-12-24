@@ -8,22 +8,22 @@ public class PageContextImpl extends ClassVisitor {
 
     final String jdwpHost;
     final int jdwpPort;
-    final String cfHost;
-    final int cfPort;
+    final String debugHost;
+    final int debugPort;
 
     public PageContextImpl(
         int api,
         ClassWriter cw,
         String jdwpHost,
         int jdwpPort,
-        String cfHost,
-        int cfPort
+        String debugHost,
+        int debugPort
     ) {
         super(api, cw);
         this.jdwpHost = jdwpHost;
         this.jdwpPort = jdwpPort;
-        this.cfHost = cfHost;
-        this.cfPort = cfPort;
+        this.debugHost = debugHost;
+        this.debugPort = debugPort;
     }
 
     @Override
@@ -42,8 +42,8 @@ public class PageContextImpl extends ClassVisitor {
                 protected void onMethodEnter() {
                     this.push(jdwpHost);
                     this.push(jdwpPort);
-                    this.push(cfHost);
-                    this.push(cfPort);
+                    this.push(debugHost);
+                    this.push(debugPort);
                     this.invokeStatic(Type.getType("Lluceedebug/coreinject/DebugManager;"), Method.getMethod("void spawnWorker(java.lang.String, int, java.lang.String, int)"));
                 }
             };

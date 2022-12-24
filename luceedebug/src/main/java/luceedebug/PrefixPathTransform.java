@@ -2,24 +2,24 @@ package luceedebug;
 
 import java.util.Optional;
 
-class PrefixPathTransform implements ICfPathTransform {
+class PrefixPathTransform implements IPathTransform {
     private final String idePrefix_;
-    private final String cfPrefix_;
-    public PrefixPathTransform(String idePrefix, String cfPrefix) {
+    private final String serverPrefix_;
+    public PrefixPathTransform(String idePrefix, String serverPrefix) {
         this.idePrefix_ = idePrefix;
-        this.cfPrefix_ = cfPrefix;
+        this.serverPrefix_ = serverPrefix;
     }
-    public Optional<String> cfToIde(String s) {
-        if (s.startsWith(cfPrefix_)) {
-            return Optional.of(s.replace(cfPrefix_, idePrefix_));
+    public Optional<String> serverToIde(String s) {
+        if (s.startsWith(serverPrefix_)) {
+            return Optional.of(s.replace(serverPrefix_, idePrefix_));
         }
         else {
             return Optional.empty();
         }
     }
-    public Optional<String> ideToCf(String s) {
+    public Optional<String> ideToServer(String s) {
         if (s.startsWith(idePrefix_)) {
-            return Optional.of(s.replace(idePrefix_, cfPrefix_));
+            return Optional.of(s.replace(idePrefix_, serverPrefix_));
         }
         else {
             return Optional.empty();
@@ -27,6 +27,6 @@ class PrefixPathTransform implements ICfPathTransform {
     }
 
     public String asTraceString() {
-        return "PrefixPathTransform{idePrefix='" + idePrefix_ + "', cfPrefix='" + cfPrefix_ + "'}";
+        return "PrefixPathTransform{idePrefix='" + idePrefix_ + "', serverPrefix='" + serverPrefix_ + "'}";
     }
 }
