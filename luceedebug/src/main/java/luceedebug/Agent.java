@@ -12,7 +12,7 @@ public class Agent {
      * We require the following invocation
      *
      * -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=jdwpHost:1234
-     * -javaagent:/abspath/to/jarfile.jar=jdwpHost=jdwpHost,jdwpPort=1234,cfHost=cfHost,cfPort=5678,jarPath=/abspath/to/jarfile.jar
+     * -javaagent:/abspath/to/jarfile.jar=jdwpHost=jdwpHost,jdwpPort=1234,debugHost=debugHost,debugPort=5678,jarPath=/abspath/to/jarfile.jar
      * 
      * where jdwpHost and cfHost are `localhost` or `0.0.0.0` or etc.
      *
@@ -30,8 +30,8 @@ public class Agent {
         /**
          * host/port for dap connection (i.e. IDE connects to this)
          */
-        String cfHost;
-        int cfPort;
+        String debugHost;
+        int debugPort;
 
         /**
          * Path to "this" jar, as in, the Jar that contains this Agent
@@ -44,8 +44,8 @@ public class Agent {
         AgentArgs(String argString) {
             boolean gotJdwpHost = false;
             boolean gotJdwpPort = false;
-            boolean gotCfHost = false;
-            boolean gotCfPort = false;
+            boolean gotDebugHost = false;
+            boolean gotDebugPort = false;
             boolean gotJarPath = false;
 
             for (var eachArg : argString.split(",")) {
@@ -63,9 +63,11 @@ public class Agent {
                         gotJdwpHost = true;
                         break;    
                     }
-                    case "cfhost": {
-                        cfHost = value;
-                        gotCfHost = true;
+                    case "cfhost":
+                        // fallthrough (cfhost is deprecated in favor of debughost)
+                    case "debughost": {
+                        debugHost = value;
+                        gotDebugHost = true;
                         break;
                     }
                     case "jdwpport": {
@@ -78,13 +80,15 @@ public class Agent {
                         }
                         break;
                     }
-                    case "cfport": {
+                    case "cfport":
+                        // fallthrough (cfport is deprecated in favor of debugport)
+                    case "debugport": {
                         try {
-                            cfPort = Integer.parseInt(value);
-                            gotCfPort = true;
+                            debugPort = Integer.parseInt(value);
+                            gotDebugPort = true;
                         }
                         catch (NumberFormatException e) {
-                            throw new IllegalArgumentException("Invalid cfPort value in agent args string (got '" + value + "' but expected an integer).");
+                            throw new IllegalArgumentException("Invalid debugPort value in agent args string (got '" + value + "' but expected an integer).");
                         }
                         break;
                     }
@@ -104,17 +108,17 @@ public class Agent {
                     doThrow = true;
                     errMsg.append(" jdwphost");
                 }
-                if (!gotCfHost) {
+                if (!gotDebugHost) {
                     doThrow = true;
-                    errMsg.append(" cfhost");
+                    errMsg.append(" debughost");
                 }
                 if (!gotJdwpPort) {
                     doThrow = true;
                     errMsg.append(" jdwpport");
                 }
-                if (!gotCfPort) {
+                if (!gotDebugPort) {
                     doThrow = true;
-                    errMsg.append(" cfport");
+                    errMsg.append(" debugport");
                 }
                 if (!gotJarPath) {
                     doThrow = true;
@@ -165,7 +169,7 @@ public class Agent {
                 })
                 .toArray(size -> new ClassInjection[size]);
 
-            inst.addTransformer(new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.cfHost, parsedArgs.cfPort));
+            inst.addTransformer(new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort));
         }
         catch (Throwable e) {
             e.printStackTrace();

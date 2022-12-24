@@ -6,18 +6,13 @@ import com.sun.jdi.VirtualMachine;
 
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Stack;
 import java.lang.ref.Cleaner;
-import java.lang.ref.WeakReference;
 
-import lucee.runtime.type.Collection;
 import lucee.runtime.PageContext;
-import lucee.runtime.type.scope.Scope;
 import luceedebug.DapServer;
-import lucee.runtime.PageContext;
 import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
 
 import luceedebug.*;
@@ -28,18 +23,18 @@ public class DebugManager {
      * called from instrumented PageContextImpl
      */
     @SuppressWarnings("unused")
-    static public void spawnWorker(String jdwpHost, int jdwpPort, String cfHost, int cfPort) {
+    static public void spawnWorker(String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
         System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
 
         System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
 
         VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
-        CfVm cfvm = new CfVm(vm);
+        LuceeVm luceeVm = new LuceeVm(vm);
 
         new Thread(() -> {
             System.out.println("[luceedebug] jdwp self connect OK");
-            DapServer.createForSocket(cfvm, cfHost, cfPort);
+            DapServer.createForSocket(luceeVm, debugHost, debugPort);
         }, threadName).start();
     }
 

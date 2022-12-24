@@ -73,14 +73,14 @@
                     "type": "object",
                     "properties": {
                       "idePrefix": {"type": "string", "default": "${workspaceFolder}"},
-                      "cfPrefix": {"type": "string", "default": "/container-root/app"}
+                      "serverPrefix": {"type": "string", "default": "/container-root/app"}
                     },
-                    "required": ["idePrefix", "cfPrefix"]
+                    "required": ["idePrefix", "serverPrefix"]
                 },
                 "default": [
                   {
                     "idePrefix": "${workspaceFolder}",
-                    "cfPrefix": "/container-root/app"
+                    "serverPrefix": "/container-root/app"
                   }
                 ]
               }
@@ -96,7 +96,7 @@
             "pathTransforms": [
               {
                 "idePrefix": "${workspaceFolder}",
-                "cfPrefix": "/app"
+                "serverPrefix": "/app"
               }
             ],
             "port": 8000
