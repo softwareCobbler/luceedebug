@@ -34,6 +34,9 @@ dependencies {
     
     // https://mvnrepository.com/artifact/javax.servlet.jsp/javax.servlet.jsp-api
     compileOnly("javax.servlet.jsp:javax.servlet.jsp-api:2.3.3")
+    // https://mvnrepository.com/artifact/javax.servlet/javax.servlet-api
+    compileOnly("javax.servlet:javax.servlet-api:3.1.0") // same as lucee deps
+
 
     compileOnly(files("extern/lucee-5.3.9.158-SNAPSHOT.jar"))
     compileOnly(files("extern/5.3.9.158-SNAPSHOT.lco"))

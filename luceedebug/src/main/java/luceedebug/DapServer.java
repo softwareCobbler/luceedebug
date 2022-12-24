@@ -16,6 +16,9 @@ import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
+import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
+import org.eclipse.xtext.xbase.lib.Pure;
+import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
 
 public class DapServer implements IDebugProtocolServer {
     private final ILuceeVm luceeVm_;
@@ -387,5 +390,41 @@ public class DapServer implements IDebugProtocolServer {
     @Override
 	public CompletableFuture<Void> configurationDone(ConfigurationDoneArguments args) {
 		return CompletableFuture.completedFuture(null);
+	}
+
+    class DumpArguments {
+        private int variablesReference;
+        public int getVariablesReference() {
+            return variablesReference;
+        }
+        
+        @Override
+        @Pure
+        public String toString() {
+          ToStringBuilder b = new ToStringBuilder(this);
+          b.add("variablesReference", this.variablesReference);
+          return b.toString();
+        }
+
+        @Override
+        @Pure
+        public boolean equals(final Object obj) {
+            if (this == obj)
+                return true;
+            if (obj == null)
+                return false;
+            if (this.getClass() != obj.getClass())
+                return false;
+            DumpArguments other = (DumpArguments) obj;
+            if (this.variablesReference != other.variablesReference)
+                return false;
+            return true;
+        }
+    }
+
+    @JsonRequest
+	CompletableFuture<Void> dump(DumpArguments args) {
+        cfvm_.dump(args.variablesReference);
+        return CompletableFuture.completedFuture(null);
 	}
 }

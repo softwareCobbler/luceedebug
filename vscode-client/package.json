@@ -23,6 +23,15 @@
     "vscode": "^1.63.0"
   },
   "contributes": {
+    "menus": {
+      "debug/variables/context": [
+        {
+          "when": "debugType == 'cfml'",
+          "command": "luceedebug.dump"
+          
+        }
+      ]
+    },
     "languages": [
 			{
 				"id": "cfml",
@@ -38,8 +47,8 @@
     ],
     "commands": [
       {
-        "command": "luceeDebugger.showLoadedClasses",
-        "title": "Lucee debugger: Show loaded CF classes",
+        "command": "luceedebug.dump",
+        "title": "luceedebug: dump value to browser",
         "enablement": "debugType == 'cfml'"
       }
     ],

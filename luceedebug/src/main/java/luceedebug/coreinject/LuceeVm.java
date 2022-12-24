@@ -221,6 +221,11 @@ public class LuceeVm implements ILuceeVm {
 
     private void bootThreadTracking() {
         final var threadStartRequest = vm_.eventRequestManager().createThreadStartRequest();
+        
+        // Should we suspend thread start event threads?
+        // Is there a perf hit to doing so?
+        // We can catch the ObjectCollectedExceptions that happen if they get collected prior to us doing
+        // work against it, and event with SUSPEND_EVENT_THREAD we were somehow hitting ObjectCollectedExceptions.
         threadStartRequest.setSuspendPolicy(EventRequest.SUSPEND_NONE);
         threadStartRequest.enable();
         initCurrentThreadListing();
@@ -457,6 +462,15 @@ public class LuceeVm implements ILuceeVm {
                 final long key = v.value();
                 final Thread thread = JdwpWorker.jdwp_getThreadResult(key);
                 threadMap_.register(thread, threadRef);
+            }
+            catch (ObjectCollectedException e) {
+                if (JDWP_WORKER_THREADREF.isCollected()) {
+                    System.out.println("[luceedebug] fatal: JDWP_WORKER_THREADREF is collected");
+                    System.exit(1);
+                }
+                else {
+                    // discard
+                }
             }
             catch (Throwable e) {
                 e.printStackTrace();
@@ -863,5 +877,33 @@ public class LuceeVm implements ILuceeVm {
         GlobalIDebugManagerHolder.debugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_OUT);
         
         continue_(threadRef);
+    }
+
+    public void dump(int dapVariablesReference) {
+        // presumably, the requester is requesting to dump a variable because they
+        // have at least one suspended thread they're investigating. We should have that thread,
+        // or at least one suspended thread. It doesn't matter which thread we use, we just
+        // need there to be an associated PageContext, so we can get its:
+        //   - Config
+        //   - ServletConfig
+        // If we can figure out how to get those from some singleton somewhere then we wouldn't need
+        // to do any thread lookup here.
+        if (suspendedThreads.size() == 0) {
+            return;
+        }
+
+        //
+        // There's no guarantee that a suspended thread is associated with a PageContext,
+        // so we need to pass a list of all suspended threads, and the manager can use that
+        // to find a PageContext.
+        //
+        final var suspendedThreadsList = new ArrayList<Thread>();
+        suspendedThreads.iterator().forEachRemaining(jdwpThreadID -> {
+            var thread = threadMap_.getThreadByJdwpId(jdwpThreadID);
+            if (thread != null) {
+                suspendedThreadsList.add(thread);
+            }
+        });
+        DebugManager.pushDump(suspendedThreadsList, dapVariablesReference);
     }
 }

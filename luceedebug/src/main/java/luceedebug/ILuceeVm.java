@@ -45,4 +45,5 @@ public interface ILuceeVm {
 
     public void clearAllBreakpoints();
 
+    public void dump(int dapVariablesReference);
 }

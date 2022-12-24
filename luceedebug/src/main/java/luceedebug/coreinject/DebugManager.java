@@ -1,19 +1,30 @@
 package luceedebug.coreinject;
 
+import com.google.common.collect.MapMaker;
 import com.sun.jdi.Bootstrap;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.VirtualMachine;
 
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Stack;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
 import java.lang.ref.Cleaner;
+import java.lang.ref.WeakReference;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.SocketException;
 
 import lucee.runtime.PageContext;
 import luceedebug.DapServer;
 import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
+import java.util.function.Supplier;
 
 import luceedebug.*;
 
@@ -55,6 +66,10 @@ public class DebugManager implements IDebugManager {
             System.out.println("[luceedebug] jdwp self connect OK");
             DapServer.createForSocket(luceeVm, debugHost, debugPort);
         }, threadName).start();
+
+        new Thread(() -> {
+            spawnLocalHttpDumpServer();
+        }, "luceedebug-dump-worker").start();
     }
 
     static private AttachingConnector getConnector() {
@@ -85,10 +100,185 @@ public class DebugManager implements IDebugManager {
         }
     }
 
-    private Cleaner cleaner = Cleaner.create();
+    static String lastDumpedThing = "nothing here";
 
-    private WeakHashMap<Thread, Stack<DebugFrame>> cfStackByThread = new WeakHashMap<>();
-    private HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
+    private static void spawnLocalHttpDumpServer() {
+        try {
+            var server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("localhost", 10001), 0);
+            server.createContext("/", new com.sun.net.httpserver.HttpHandler() {
+                public void handle(com.sun.net.httpserver.HttpExchange h) throws IOException {
+                    final var headers = h.getResponseHeaders();
+                    final var body = h.getResponseBody();
+                    headers.add("Connection", "close");
+                    headers.add("Content-Type", "text/html; charset=utf-8");
+
+                    // the icon link is intended to prevent favicon requests
+                    final String xbody = "<!DOCTYPE html><html><head><link rel='icon' href='data:,'></head><body>" + lastDumpedThing + "</body></html>";
+                    final byte[] bodyBytes = xbody.getBytes("UTF-8");
+
+                    h.sendResponseHeaders(200, bodyBytes.length);
+                    body.write(bodyBytes);
+                    body.close();
+                }
+            });
+            server.start();
+        }
+        catch (Throwable e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    // we only need to know the thread, so we can get the pagecontext, so we can get Config and ServletConfig,
+    // which are required to generate a fresh page context, which we want so we have a fresh state and especially an empty output buffer.
+    // Are Config and ServletConfig globally available? Pulling those values from some global context would be much less kludgy.
+    // We need to know which thread is suspended, but caller doesn't have that info, just a variableID.
+    // Caller does have "all the suspended threads", but not all of them may have an associated page context.
+    // So we can iterate until we find one with an associated page context
+    synchronized public void pushDump(ArrayList<Thread> suspendedThreads, int variableID) {
+        // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
+        // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
+        // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
+        // presumably all complex values have a ref + a variable? One too many layers of indirection?
+        final var ref = refTracker.maybeGetFromId(variableID);
+        if (ref == null) {
+            lastDumpedThing = "couldn't find variable (ref!) having ID " + variableID;
+            return;
+        }
+
+        // paranoid null handling here, nothing should actually be null
+        final var someDumpable = ref.wrapped == null
+            ? null
+            : ref.wrapped.cfEntity == null
+            ? null
+            : ref.wrapped.cfEntity.wrapped;
+
+        final var pageContextRef = ((Supplier<WeakReference<PageContext>>) () -> {
+            for (var thread : suspendedThreads) {
+                var pageContextRef_ = pageContextByThread.get(thread);
+                if (pageContextRef_ != null) {
+                    return pageContextRef_;
+                }
+            }
+            return null;
+        }).get();
+        final var pageContext = pageContextRef == null ? null : pageContextRef.get();
+
+        if (pageContextRef == null || pageContext == null) {
+            var msgBuilder = new StringBuilder();
+            suspendedThreads.forEach(thread -> msgBuilder.append("<div>" + thread + "</div>"));
+            lastDumpedThing = "<div>couldn't get a page context, iterated over threads:</div>" + msgBuilder.toString();
+            return;
+        }
+
+        // someDumpable could be null, but that should still dump as some kind of visualization of null
+        pushDump(pageContext, someDumpable);
+    }
+
+    // this is "single threaded" for now, only a single dumpable thing is tracked at once,
+    // pushing another dump overwrites the old dump.
+    static synchronized private void pushDump(PageContext pageContext, Object someDumpable) {
+        var thread = new Thread(() -> {
+            try {
+                final var outputStream = new ByteArrayOutputStream();
+                PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
+                    /*Config config*/ pageContext.getConfig(),
+                    /*ServletConfig servletConfig*/ pageContext.getServletConfig(),
+                    /*File contextRoot*/ new File("."),
+                    /*String host*/ "",
+                    /*String scriptName*/ "",
+                    /*String queryString*/ "",
+                    /*Cookie[] cookies*/ new javax.servlet.http.Cookie[] {},
+                    /*Map<String, Object> headers*/ new HashMap<>(),
+                    /*Map<String, String> parameters*/ new HashMap<>(),
+                    /*Map<String, Object> attributes*/ new HashMap<>(),
+                    /*OutputStream os*/ outputStream,
+                    /*boolean register*/ false,
+                    /*long timeout*/ 99999, // seconds?
+                    /*boolean ignoreScopes*/ true
+                );
+
+                lucee.runtime.engine.ThreadLocalPageContext.register(freshEphemeralPageContext);
+                
+                //
+                // this works, but it doesn't seem it's what Lucee actually does anymore.
+                // Instaed, it calls out to some cf-lib function.
+                //
+                //lucee.runtime.functions.other.Dump.call(pageContextWorker, someDumpable);
+                //return lucee.runtime.functions.other.Dump.call(pc, object, null, true, 9999, null, null, null, null, 9999, true, true);
+                // lucee.runtime.functions.other.Dump.call(
+                //     /*PageContext pc*/ pageContextWorker,
+                //     /*Object object*/ someDumpable,
+                //     /*String label*/ null,
+                //     /*boolean expand*/ true,
+                //     /*double maxLevel*/ 9999,
+                //     /*String show*/ null,
+                //     /*String hide*/ null,
+                //     /*String output*/ "browser",
+                //     /*String format*/ null,
+                //     /*double keys*/ 9999,
+                //     /*boolean metainfo*/ true,
+                //     /*boolean showUDFs*/ true
+                // );
+                lucee.runtime.functions.system.CFFunction.call(
+                    freshEphemeralPageContext, new Object[]{
+                        lucee.runtime.type.FunctionValueImpl.newInstance(lucee.runtime.type.util.KeyConstants.___filename, "writeDump.cfm"),
+                        lucee.runtime.type.FunctionValueImpl.newInstance(lucee.runtime.type.util.KeyConstants.___name, "writeDump"),
+                        lucee.runtime.type.FunctionValueImpl.newInstance(lucee.runtime.type.util.KeyConstants.___isweb, Boolean.FALSE),
+                        lucee.runtime.type.FunctionValueImpl.newInstance(lucee.runtime.type.util.KeyConstants.___mapping, "/mapping-function"),
+                        someDumpable
+                        //LiteralArray.call(var1, new Object[]{LiteralValue.toNumber(var1, 0L)})
+                    });
+
+                freshEphemeralPageContext.flush();
+                lastDumpedThing = new String(outputStream.toByteArray(), "UTF-8");
+                // String xxx = new String(outputStream.toByteArray(), "UTF-8");
+                // System.out.println(xxx);
+
+                lucee.runtime.util.PageContextUtil.releasePageContext(
+                    /*PageContext pc*/ freshEphemeralPageContext,
+                    /*boolean register*/ true
+                );
+                outputStream.close();
+
+                lucee.runtime.engine.ThreadLocalPageContext.release();
+            }
+            catch (Throwable e) {
+                System.out.println("[luceedebug] exception in pushDump will be discarded. trace follows:");
+                e.printStackTrace();
+                System.exit(1);
+            }
+        });
+
+        thread.start();
+
+        try {
+            // needs to be on its own thread for PageContext reasons
+            // but we still want to do this synchronously
+            thread.join();
+        }
+        catch (Throwable e) {
+            if (thread.isAlive()) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+            else {
+                // thread is joined, discard exception
+            }
+        }
+    }
+
+    private static Cleaner cleaner = Cleaner.create();
+
+    private static ConcurrentMap<Thread, Stack<DebugFrame>> cfStackByThread = new MapMaker()
+        .concurrencyLevel(/* default as per docs */ 4)
+        .weakKeys()
+        .makeMap();
+    private static final ConcurrentMap<Thread, WeakReference<PageContext>> pageContextByThread = new MapMaker()
+        .concurrencyLevel(/* default as per docs */ 4)
+        .weakKeys()
+        .makeMap();
+    private static HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object
@@ -322,6 +512,8 @@ public class DebugManager implements IDebugManager {
             Stack<DebugFrame> list = new Stack<>();
             cfStackByThread.put(currentThread, list);
             stack = list;
+
+            pageContextByThread.put(currentThread, new WeakReference<>(pageContext));
         }
 
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
@@ -337,7 +529,7 @@ public class DebugManager implements IDebugManager {
         frameTracker.put(frame.getId(), frame);
     }
 
-    synchronized public void popCfFrame() {
+    public void popCfFrame() {
         Thread currentThread = Thread.currentThread();
         Stack<DebugFrame> maybeNull_frameListing = cfStackByThread.get(currentThread);
 
@@ -360,6 +552,7 @@ public class DebugManager implements IDebugManager {
         if (maybeNull_frameListing.size() == 0) {
             // we popped the last frame, so we destroy the whole stack
             cfStackByThread.remove(currentThread);
+            pageContextByThread.remove(currentThread);
         }
     }
 }
