@@ -409,22 +409,26 @@ public class DapServer implements IDebugProtocolServer {
         @Override
         @Pure
         public boolean equals(final Object obj) {
-            if (this == obj)
+            if (this == obj) {
                 return true;
-            if (obj == null)
+            }
+            if (obj == null) {
                 return false;
-            if (this.getClass() != obj.getClass())
+            }
+            if (this.getClass() != obj.getClass()) {
                 return false;
+            }
             DumpArguments other = (DumpArguments) obj;
-            if (this.variablesReference != other.variablesReference)
+            if (this.variablesReference != other.variablesReference) {
                 return false;
+            }
             return true;
         }
     }
 
     @JsonRequest
 	CompletableFuture<Void> dump(DumpArguments args) {
-        cfvm_.dump(args.variablesReference);
+        luceeVm_.dump(args.variablesReference);
         return CompletableFuture.completedFuture(null);
 	}
 }

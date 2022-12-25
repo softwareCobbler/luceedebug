@@ -177,7 +177,7 @@ public class DebugManager implements IDebugManager {
 
     // this is "single threaded" for now, only a single dumpable thing is tracked at once,
     // pushing another dump overwrites the old dump.
-    static synchronized private void pushDump(PageContext pageContext, Object someDumpable) {
+    synchronized private void pushDump(PageContext pageContext, Object someDumpable) {
         var thread = new Thread(() -> {
             try {
                 final var outputStream = new ByteArrayOutputStream();
@@ -268,17 +268,17 @@ public class DebugManager implements IDebugManager {
         }
     }
 
-    private static Cleaner cleaner = Cleaner.create();
+    private final Cleaner cleaner = Cleaner.create();
 
-    private static ConcurrentMap<Thread, Stack<DebugFrame>> cfStackByThread = new MapMaker()
+    private final ConcurrentMap<Thread, Stack<DebugFrame>> cfStackByThread = new MapMaker()
         .concurrencyLevel(/* default as per docs */ 4)
         .weakKeys()
         .makeMap();
-    private static final ConcurrentMap<Thread, WeakReference<PageContext>> pageContextByThread = new MapMaker()
+    private final ConcurrentMap<Thread, WeakReference<PageContext>> pageContextByThread = new MapMaker()
         .concurrencyLevel(/* default as per docs */ 4)
         .weakKeys()
         .makeMap();
-    private static HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
+    private final HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object

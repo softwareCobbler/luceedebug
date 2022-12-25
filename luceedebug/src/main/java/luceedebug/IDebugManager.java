@@ -1,5 +1,7 @@
 package luceedebug;
 
+import java.util.ArrayList;
+
 /**
  * We might be able to whittle this down to just {push,pop,step},
  * which is what instrumented pages need. The other methods are defined in package coreinject,
@@ -21,4 +23,6 @@ public interface IDebugManager {
     public IDebugEntity[] getScopesForFrame(long frameID);
     public IDebugEntity[] getVariables(long id);
     public void registerCfStepHandler(CfStepCallback cb);
+
+    public void pushDump(ArrayList<Thread> suspendedThreads, int variableID);
 }

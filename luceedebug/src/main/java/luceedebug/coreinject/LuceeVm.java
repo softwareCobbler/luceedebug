@@ -904,6 +904,6 @@ public class LuceeVm implements ILuceeVm {
                 suspendedThreadsList.add(thread);
             }
         });
-        DebugManager.pushDump(suspendedThreadsList, dapVariablesReference);
+        GlobalIDebugManagerHolder.debugManager.pushDump(suspendedThreadsList, dapVariablesReference);
     }
 }
