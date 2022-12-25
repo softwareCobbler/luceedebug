@@ -28,14 +28,18 @@ public class CfmOrCfc extends ClassVisitor {
         super.visit(version, access, name, signature, superName, interfaces);
     }
 
-    static class DebugManager_t {
-        static final Type type = Type.getType("Lluceedebug/coreinject/DebugManager;");
+    static class IDebugManager_t {
+        static final Type type = Type.getType("Lluceedebug/IDebugManager;");
         // pushCfFrame : (_ : PageContext, filenameAbsPath : string, distanceToFrame : int) => void
         static final Method m_pushCfFrame = Method.getMethod("void pushCfFrame(lucee.runtime.PageContext, String, int)");
         // popCfFrame : () => void 
         static final Method m_popCfFrame = Method.getMethod("void popCfFrame()");
         // step : (depthToFrame : int, currentLine : int) => void
         static final Method m_step = Method.getMethod("void step(int, int)");
+    }
+
+    static class GlobalIDebugManagerHolder_t {
+        static final Type type = Type.getType("Lluceedebug/GlobalIDebugManagerHolder;");
     }
 
     @Override
@@ -85,17 +89,23 @@ public class CfmOrCfc extends ClassVisitor {
             {
                 // [<empty-stack>]
 
-                ga.loadArg(0); // should be PageContextImpl as PageContext
-                // [PageContext]
-                
-                ga.push(sourceName);
-                // [PageContext, String]
+                // pushCfFrame
+                {
+                    ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
+                    // [IDebugManager_t]
 
-                ga.push(1); // 1 frame from the method we're in (which is the actual frame)
-                // [PageContext, String, int]
+                    ga.loadArg(0); // should be PageContextImpl as PageContext
+                    // [IDebugManager_t, PageContext]
+                    
+                    ga.push(sourceName);
+                    // [IDebugManager_t, PageContext, String]
 
-                ga.invokeStatic(DebugManager_t.type, DebugManager_t.m_pushCfFrame);
-                // [<empty>]
+                    ga.push(1); // 1 frame from the method we're in (which is the actual frame)
+                    // [IDebugManager_t, PageContext, String, int]
+
+                    ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_pushCfFrame);
+                    // [<empty>]
+                }
 
                 ga.loadThis();
                 // [<this>]
@@ -108,7 +118,12 @@ public class CfmOrCfc extends ClassVisitor {
                 ga.invokeVirtual(thisType, new Method(delegateToName, descriptor));
                 // [<return-value>]
 
-                ga.invokeStatic(DebugManager_t.type, DebugManager_t.m_popCfFrame);
+                // popCfFrame
+                {
+                    ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
+                    ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_popCfFrame);
+                }
+                
                 // [<return-value>]
 
                 ga.returnValue();
@@ -122,7 +137,11 @@ public class CfmOrCfc extends ClassVisitor {
             {
                 // [<exception-object>]
 
-                ga.invokeStatic(DebugManager_t.type, DebugManager_t.m_popCfFrame);
+                // popCfFrame
+                {
+                    ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
+                    ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_popCfFrame);
+                }
                 // [<exception-object>]
 
                 ga.throwException();
@@ -161,9 +180,14 @@ public class CfmOrCfc extends ClassVisitor {
 
                 @Override
                 public void visitLineNumber(int line, Label start) {
-                    this.push(1); // depth to actual frame
-                    this.push(line); // line
-                    this.invokeStatic(DebugManager_t.type, DebugManager_t.m_step);
+                    // step
+                    {
+                        this.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
+                        this.push(1); // depth to actual frame
+                        this.push(line); // line
+                        this.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_step);
+                    }
+
                     super.visitLineNumber(line, this.mark());
                 }
             };

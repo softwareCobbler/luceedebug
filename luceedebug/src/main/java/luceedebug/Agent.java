@@ -169,7 +169,9 @@ public class Agent {
                 })
                 .toArray(size -> new ClassInjection[size]);
 
-            inst.addTransformer(new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort));
+            final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort);
+            inst.addTransformer(transformer);
+            transformer.makeSystemOutPrintlnSafeForUseInTransformer();
         }
         catch (Throwable e) {
             e.printStackTrace();

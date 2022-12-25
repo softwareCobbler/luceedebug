@@ -17,13 +17,32 @@ import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't 
 
 import luceedebug.*;
 
-public class DebugManager {
+public class DebugManager implements IDebugManager {
 
     /**
-     * called from instrumented PageContextImpl
+     * see DebugManager.dot for class loader graph
      */
-    @SuppressWarnings("unused")
-    static public void spawnWorker(String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
+    public DebugManager() {
+        // Sanity check that we're being loaded as expected.
+        // DebugManager must be loaded with the "lucee core loader", which means we need to have already seen PageContextImpl.
+        // Using the "core loader" (which is used to load, amongst other things, PageContextImpl) gives us
+        // same-classloader-visibility (term for that?) to PageContextImpl, so we can ask it for detailed runtime info.
+        if (GlobalIDebugManagerHolder.luceeCoreLoader == null) {
+            System.out.println("[luceedebug] fatal - expected luceedebug.coreinject.DebugManager to be loaded with the Lucee core loader, but the Lucee core loader hasn't been loaded yet.");
+            System.exit(1);
+        }
+        else if (GlobalIDebugManagerHolder.luceeCoreLoader != this.getClass().getClassLoader()) {
+            System.out.println("[luceedebug] fatal - expected luceedebug.coreinject.DebugManager to be loaded with the Lucee core loader, but it is being loaded with classloader='" + this.getClass().getClassLoader() + "'.");
+            System.out.println("[luceedebug]         lucee coreLoader has been seen, and is " + GlobalIDebugManagerHolder.luceeCoreLoader);
+            System.exit(1);
+        }
+        else {
+            // ok, no problem; nothing to do.
+            // This should be a singleton, but the instance is stored outside of coreinject.
+        }
+    }
+
+    public void spawnWorker(String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
         System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
 
@@ -38,7 +57,7 @@ public class DebugManager {
         }, threadName).start();
     }
 
-    static AttachingConnector getConnector() {
+    static private AttachingConnector getConnector() {
         var vmm = Bootstrap.virtualMachineManager();
         var attachingConnectors = vmm.attachingConnectors();
         for (var c : attachingConnectors) {
@@ -51,7 +70,7 @@ public class DebugManager {
         return null;
     }
 
-    static VirtualMachine jdwpSelfConnect(String host, int port) {
+    static private VirtualMachine jdwpSelfConnect(String host, int port) {
         var connector = getConnector();
         var args = connector.defaultArguments();
         args.get("hostname").setValue(host);
@@ -66,10 +85,10 @@ public class DebugManager {
         }
     }
 
-    private static Cleaner cleaner = Cleaner.create();
+    private Cleaner cleaner = Cleaner.create();
 
-    private static WeakHashMap<Thread, Stack<DebugFrame>> cfStackByThread = new WeakHashMap<>();
-    private static HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
+    private WeakHashMap<Thread, Stack<DebugFrame>> cfStackByThread = new WeakHashMap<>();
+    private HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object
@@ -77,30 +96,26 @@ public class DebugManager {
      * These are nameless values floating in memory, and we wrap them in objects that themselves have IDs
      * Asking for an object (or registering the same object again) should produce the same ID for the same object
      */
-    private static ValTracker valTracker = new ValTracker(cleaner);
+    private ValTracker valTracker = new ValTracker(cleaner);
 
     /**
      * An entityRef is a named reference to an entity. There can be many entityRefs for a single entity.
      * Each entity ref has a unique ID. e.g. `local.foo` and `variables.foo` and `arguments.bar` may all point to the same entity, but they
      * are different entityRefs. Once created, it is not possible to look them up by object identity, they must be looked up by ID.
      */
-    private static RefTracker<CfEntityRef> refTracker = new RefTracker<>(valTracker, cleaner);
+    private RefTracker<CfEntityRef> refTracker = new RefTracker<>(valTracker, cleaner);
 
-    public static interface CfStepCallback {
-        void call(Thread thread, int distanceToJvmFrame);
-    }
-
-    private static CfStepCallback didStepCallback = null;
-    public static void registerCfStepHandler(CfStepCallback cb) {
+    private CfStepCallback didStepCallback = null;
+    public void registerCfStepHandler(CfStepCallback cb) {
         didStepCallback = cb;
     }
-    private static void notifyStep(Thread thread, int distanceToJvmFrame) {
+    private void notifyStep(Thread thread, int distanceToJvmFrame) {
         if (didStepCallback != null) {
             didStepCallback.call(thread, distanceToJvmFrame + 1);
         }
     }
 
-    synchronized public static IDebugEntity[] getScopesForFrame(long frameID) {
+    synchronized public IDebugEntity[] getScopesForFrame(long frameID) {
         DebugFrame frame = frameTracker.get(frameID);
         System.out.println("Get scopes for frame, frame was " + frame);
         if (frame == null) {
@@ -109,7 +124,7 @@ public class DebugManager {
         return frame.getScopes();
     }
 
-    synchronized public static IDebugEntity[] getVariables(long id) {
+    synchronized public IDebugEntity[] getVariables(long id) {
         RefTracker.Wrapper_t<CfEntityRef> cfEntityRef = refTracker.maybeGetFromId(id);
         if (cfEntityRef == null) {
             return new IDebugEntity[0];
@@ -117,10 +132,11 @@ public class DebugManager {
         return cfEntityRef.wrapped.getAsDebugEntity();
     }
 
-    synchronized public static IDebugFrame[] getCfStack(Thread thread) {
+    synchronized public IDebugFrame[] getCfStack(Thread thread) {
         Stack<DebugFrame> stack = cfStackByThread.get(thread);
         if (stack == null) {
             System.out.println("getCfStack called, frames was null, frames is " + cfStackByThread + ", passed thread was " + thread);
+            System.out.println("                   thread=" + thread + " this=" + this);
             return new DebugFrame[0];
         }
 
@@ -167,7 +183,7 @@ public class DebugManager {
         }
     };
 
-    static void registerStepRequest(Thread thread, int type) {
+    public void registerStepRequest(Thread thread, int type) {
         DebugFrame frame = getTopmostFrame(thread);
         if (frame == null) {
             System.out.println("[luceedebug] registerStepRequest found no frames");
@@ -192,9 +208,9 @@ public class DebugManager {
 
     // This holds strongrefs to Thread objects, but requests should be cleared out after their completion
     // It doesn't make sense to have a step request for thread that would otherwise be reclaimable but for our reference to it here
-    private static ConcurrentHashMap<Thread, CfStepRequest> stepRequestByThread = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Thread, CfStepRequest> stepRequestByThread = new ConcurrentHashMap<>();
 
-    static public void clearStepRequest(Thread thread) {
+    public void clearStepRequest(Thread thread) {
         stepRequestByThread.remove(thread);
     }
 
@@ -214,7 +230,7 @@ public class DebugManager {
      * We would use `stepOccuredInThisInstance` rather than `stepOccuredInThisKlass`,
      * but we don't get notified of the "current this instance identity" in a jdwp step event, only the "curent class"
      */
-    public static void step(int distanceToActualFrame, int lineNumber) {
+    public void step(int distanceToActualFrame, int lineNumber) {
         long start = System.nanoTime();
         Thread currentThread = Thread.currentThread();
         
@@ -234,7 +250,7 @@ public class DebugManager {
         }
     }
 
-    private static void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
+    private void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
         if (request.type == CfStepRequest.STEP_INTO) {
             // step in, every step is a valid step
             clearStepRequest(currentThread);
@@ -273,7 +289,7 @@ public class DebugManager {
         }
     }
 
-    private static DebugFrame maybeUpdateTopmostFrame(Thread thread, int lineNumber) {
+    private DebugFrame maybeUpdateTopmostFrame(Thread thread, int lineNumber) {
         DebugFrame frame = getTopmostFrame(thread);
         if (frame == null) {
             return null;
@@ -282,7 +298,7 @@ public class DebugManager {
         return frame;
     }
 
-    private static DebugFrame getTopmostFrame(Thread thread) {
+    private DebugFrame getTopmostFrame(Thread thread) {
         Stack<DebugFrame> stack = cfStackByThread.get(thread);
         if (stack == null) {
             return null;
@@ -295,7 +311,7 @@ public class DebugManager {
      * then 1 from one call deep, and 2 for 2 calls deep (probably we are 2), etc.
      * each caller bumps it until we get here
      */
-    public static void pushCfFrame(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
+    public void pushCfFrame(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
         Thread currentThread = Thread.currentThread();
 
         Stack<DebugFrame> stack = cfStackByThread.get(currentThread);
@@ -321,7 +337,7 @@ public class DebugManager {
         frameTracker.put(frame.getId(), frame);
     }
 
-    synchronized public static void popCfFrame() {
+    synchronized public void popCfFrame() {
         Thread currentThread = Thread.currentThread();
         Stack<DebugFrame> maybeNull_frameListing = cfStackByThread.get(currentThread);
 

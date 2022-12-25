@@ -1,0 +1,40 @@
+digraph {
+    rankdir=BT
+    node[shape=rect]
+    compound=true
+    ranksep=2
+
+    subgraph cluster_outside_core {
+        label="outside 'core'\l(effectively 'loader' in Lucee terms)"
+        IDebugManager
+        GlobalIDebugManagerHolder
+    }
+
+    subgraph cluster_inside_core {
+        label="inside 'core'"
+        PageContextImpl
+        DebugManager
+        luceeCoreLoader [label="Lucee core loader"]
+        some_page [label="some page"]
+        some_page -> luceeCoreLoader [arrowhead=curve]
+        subgraph cluster_leel {
+            label="isolated by osgi (lucee plugin bundles, esp. admin)"
+            someOtherOsgiLoader_A [label="BundleWiringImpl$BundleClassLoader"]
+            some_page_A [label="some page"]
+            some_page_A -> someOtherOsgiLoader_A [arrowhead=curve]
+            someOtherOsgiLoader_B [label="BundleWiringImpl$BundleClassLoader"]
+            some_page_B [label="some page"]
+            some_page_B -> someOtherOsgiLoader_B [arrowhead=curve]
+        }
+    }
+
+    GlobalIDebugManagerHolder -> IDebugManager [arrowhead=dot label="owns 1"]
+
+    DebugManager -> IDebugManager [arrowhead=diamond]
+    DebugManager -> luceeCoreLoader [arrowhead=curve]
+    PageContextImpl -> luceeCoreLoader [arrowhead=curve]
+    someOtherOsgiLoader_A -> luceeCoreLoader  [arrowhead=curve]
+    someOtherOsgiLoader_B -> luceeCoreLoader  [arrowhead=curve]
+
+    luceeCoreLoader -> GlobalIDebugManagerHolder [lhead=cluster_outside_core label="OSGi boot delgated\lget opaque ref to IDebugManager\lactual impl has access to core loader"]
+}

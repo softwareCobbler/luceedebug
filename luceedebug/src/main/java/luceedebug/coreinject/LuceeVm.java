@@ -319,7 +319,7 @@ public class LuceeVm implements ILuceeVm {
 
         bootThreadTracking();
 
-        DebugManager.registerCfStepHandler((thread, distanceToFrame) -> {
+        GlobalIDebugManagerHolder.debugManager.registerCfStepHandler((thread, distanceToFrame) -> {
             final var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
             final var done = new AtomicBoolean(false);
 
@@ -561,7 +561,7 @@ public class LuceeVm implements ILuceeVm {
         else {
             // if we are stepping, but we hit a breakpoint, cancel the stepping
             if (steppingState == SteppingState.stepping) {
-                DebugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadRef.uniqueID()));
+                GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadRef.uniqueID()));
                 steppingState = SteppingState.none;
             }
             if (breakpointEventCallback != null) {
@@ -583,15 +583,15 @@ public class LuceeVm implements ILuceeVm {
 
     public IDebugFrame[] getStackTrace(long jdwpThreadId) {
         var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadId);
-        return DebugManager.getCfStack(thread);
+        return GlobalIDebugManagerHolder.debugManager.getCfStack(thread);
     }
 
     public IDebugEntity[] getScopes(long frameID) {
-        return DebugManager.getScopesForFrame(frameID);
+        return GlobalIDebugManagerHolder.debugManager.getScopesForFrame(frameID);
     }
 
     public IDebugEntity[] getVariables(long ID) {
-        return DebugManager.getVariables(ID);
+        return GlobalIDebugManagerHolder.debugManager.getVariables(ID);
     }
 
     static private class KlassMap {
@@ -820,7 +820,7 @@ public class LuceeVm implements ILuceeVm {
             return;
         }
 
-        DebugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_INTO);
+        GlobalIDebugManagerHolder.debugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_INTO);
 
         continue_(threadRef);
     }
@@ -841,7 +841,7 @@ public class LuceeVm implements ILuceeVm {
             return;
         }
 
-        DebugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_OVER);
+        GlobalIDebugManagerHolder.debugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_OVER);
         
         continue_(threadRef);
     }
@@ -860,7 +860,7 @@ public class LuceeVm implements ILuceeVm {
             return;
         }
 
-        DebugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_OUT);
+        GlobalIDebugManagerHolder.debugManager.registerStepRequest(thread, DebugManager.CfStepRequest.STEP_OUT);
         
         continue_(threadRef);
     }

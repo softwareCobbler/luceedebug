@@ -8,13 +8,9 @@ import org.objectweb.asm.*;
 import luceedebug.instrumenter.CfmOrCfc;
 
 import java.security.ProtectionDomain;
+import java.util.ArrayList;
 
 public class LuceeTransformer implements ClassFileTransformer {
-    // hm ... can there be 2 different engines on the same vm, with different loaders? 
-    // would that happen alot in a dev environment where you want to hook up a debugger?
-    static private ClassLoader luceeCoreLoader = null;
-    private long totalInstrumentationTime = 0;
-
     private final String jdwpHost;
     private final int jdwpPort;
     private final String debugHost;
@@ -35,6 +31,30 @@ public class LuceeTransformer implements ClassFileTransformer {
      * Then, this should be set to null, since we don't need to hold onto them locally.
      */
     private ClassInjection[] pendingCoreLoaderClassInjections;
+
+    /**
+     * this print stuff is debug related;
+     * If you want to println at some arbitrary time very soon after initializing the transformer and registering it with the JVM,
+     * it's possible that the classes responsible for System.out.println are being loaded when _we_ say System.out.println,
+     * which results in cryptic ClassCircularityErrors and eventually assertion failures from JVM native code.
+     */
+    private boolean systemOutPrintlnLoaded = false;
+    private ArrayList<String> pendingPrintln = new ArrayList<>();
+    private void println(String s) {
+        if (!systemOutPrintlnLoaded) {
+            pendingPrintln.add(s);
+        }
+        else {
+            System.out.println(s);
+        }
+    }
+    public void makeSystemOutPrintlnSafeForUseInTransformer() {
+        System.out.println("");
+        systemOutPrintlnLoaded = true;
+        for (var s : pendingPrintln) {
+            println(s);
+        }
+    }
 
     public LuceeTransformer(
         ClassInjection[] injections,
@@ -57,16 +77,14 @@ public class LuceeTransformer implements ClassFileTransformer {
         ProtectionDomain protectionDomain,
         byte[] classfileBuffer
     ) throws IllegalClassFormatException {
-        long rstart = System.nanoTime();
         var classReader = new ClassReader(classfileBuffer);
         String superClass = classReader.getSuperName();
-        long rend = System.nanoTime();
 
         if (className.equals("org/apache/felix/framework/Felix")) {
             return instrumentFelix(classfileBuffer, loader);
         }
         else if (className.equals("lucee/runtime/PageContextImpl")) {
-            luceeCoreLoader = loader;
+            GlobalIDebugManagerHolder.luceeCoreLoader = loader;
 
             try {
                 Method m = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, int.class, int.class);
@@ -74,17 +92,17 @@ public class LuceeTransformer implements ClassFileTransformer {
 
                 for (var injection : pendingCoreLoaderClassInjections) {
                     // warn: reflection ... when does that become unsupported?
-                    m.invoke(luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
+                    m.invoke(GlobalIDebugManagerHolder.luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
                 }
                 
                 pendingCoreLoaderClassInjections = null;
 
                 try {
-                    final var klass = luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
-                    System.out.println("[luceedebug] Loaded " + klass + " with ClassLoader '" + klass.getClassLoader() + "'");
-                    klass
-                        .getMethod("spawnWorker", String.class, int.class, String.class, int.class)
-                        .invoke(null, jdwpHost, jdwpPort, debugHost, debugPort);
+                    final var klass = GlobalIDebugManagerHolder.luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
+                    GlobalIDebugManagerHolder.debugManager = (IDebugManager)klass.getConstructor().newInstance();
+
+                    System.out.println("[luceedebug] Loaded " + GlobalIDebugManagerHolder.debugManager + " with ClassLoader '" + GlobalIDebugManagerHolder.debugManager.getClass().getClassLoader() + "'");
+                    GlobalIDebugManagerHolder.debugManager.spawnWorker(jdwpHost, jdwpPort, debugHost, debugPort);
                 }
                 catch (Throwable e) {
                     e.printStackTrace();
@@ -101,16 +119,12 @@ public class LuceeTransformer implements ClassFileTransformer {
         }
         else if (superClass.equals("lucee/runtime/ComponentPageImpl") || superClass.equals("lucee/runtime/PageImpl")) {
             System.out.println("[luceedebug] Instrumenting " + className);
-            long start = System.nanoTime();
-            if (luceeCoreLoader == null) {
+            if (GlobalIDebugManagerHolder.luceeCoreLoader == null) {
                 System.out.println("Got class " + className + " before receiving PageContextImpl, debugging will fail.");
                 System.exit(1);
             }
 
-            var result = instrumentCfmOrCfc(classfileBuffer, classReader, className);
-            long end = System.nanoTime();
-            totalInstrumentationTime += (end - start) + (rend - rstart);
-            return result;
+            return instrumentCfmOrCfc(classfileBuffer, classReader, className);
         }
         else {
             return classfileBuffer;
@@ -169,7 +183,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         var classWriter = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
             @Override
             protected ClassLoader getClassLoader() {
-                return luceeCoreLoader;
+                return GlobalIDebugManagerHolder.luceeCoreLoader;
             }
         };
 
