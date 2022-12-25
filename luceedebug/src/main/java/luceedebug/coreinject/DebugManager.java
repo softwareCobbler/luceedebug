@@ -67,9 +67,9 @@ public class DebugManager implements IDebugManager {
             DapServer.createForSocket(luceeVm, debugHost, debugPort);
         }, threadName).start();
 
-        new Thread(() -> {
-            spawnLocalHttpDumpServer();
-        }, "luceedebug-dump-worker").start();
+        // new Thread(() -> {
+        //     spawnLocalHttpDumpServer();
+        // }, "luceedebug-dump-worker").start();
     }
 
     static private AttachingConnector getConnector() {
@@ -100,33 +100,37 @@ public class DebugManager implements IDebugManager {
         }
     }
 
-    static String lastDumpedThing = "nothing here";
+    //static String lastDumpedThing = "nothing here";
 
-    private static void spawnLocalHttpDumpServer() {
-        try {
-            var server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("localhost", 10001), 0);
-            server.createContext("/", new com.sun.net.httpserver.HttpHandler() {
-                public void handle(com.sun.net.httpserver.HttpExchange h) throws IOException {
-                    final var headers = h.getResponseHeaders();
-                    final var body = h.getResponseBody();
-                    headers.add("Connection", "close");
-                    headers.add("Content-Type", "text/html; charset=utf-8");
+    // private static void spawnLocalHttpDumpServer() {
+    //     try {
+    //         var server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("localhost", 10001), 0);
+    //         server.createContext("/", new com.sun.net.httpserver.HttpHandler() {
+    //             public void handle(com.sun.net.httpserver.HttpExchange h) throws IOException {
+    //                 final var headers = h.getResponseHeaders();
+    //                 final var body = h.getResponseBody();
+    //                 headers.add("Connection", "close");
+    //                 headers.add("Content-Type", "text/html; charset=utf-8");
 
-                    // the icon link is intended to prevent favicon requests
-                    final String xbody = "<!DOCTYPE html><html><head><link rel='icon' href='data:,'></head><body>" + lastDumpedThing + "</body></html>";
-                    final byte[] bodyBytes = xbody.getBytes("UTF-8");
+    //                 // the icon link is intended to prevent favicon requests
+    //                 final String xbody = "<!DOCTYPE html><html><head><link rel='icon' href='data:,'></head><body>" + lastDumpedThing + "</body></html>";
+    //                 final byte[] bodyBytes = xbody.getBytes("UTF-8");
 
-                    h.sendResponseHeaders(200, bodyBytes.length);
-                    body.write(bodyBytes);
-                    body.close();
-                }
-            });
-            server.start();
-        }
-        catch (Throwable e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
+    //                 h.sendResponseHeaders(200, bodyBytes.length);
+    //                 body.write(bodyBytes);
+    //                 body.close();
+    //             }
+    //         });
+    //         server.start();
+    //     }
+    //     catch (Throwable e) {
+    //         e.printStackTrace();
+    //         System.exit(1);
+    //     }
+    // }
+
+    private String wrapDumpInHtmlDoc(String s) {
+        return "<!DOCTYPE html><html><body>" + s + "</body></html>";
     }
 
     // we only need to know the thread, so we can get the pagecontext, so we can get Config and ServletConfig,
@@ -135,15 +139,14 @@ public class DebugManager implements IDebugManager {
     // We need to know which thread is suspended, but caller doesn't have that info, just a variableID.
     // Caller does have "all the suspended threads", but not all of them may have an associated page context.
     // So we can iterate until we find one with an associated page context
-    synchronized public void pushDump(ArrayList<Thread> suspendedThreads, int variableID) {
+    synchronized public String pushDump(ArrayList<Thread> suspendedThreads, int variableID) {
         // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
         // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
         // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
         // presumably all complex values have a ref + a variable? One too many layers of indirection?
         final var ref = refTracker.maybeGetFromId(variableID);
         if (ref == null) {
-            lastDumpedThing = "couldn't find variable (ref!) having ID " + variableID;
-            return;
+            return "couldn't find variable (ref!) having ID " + variableID;
         }
 
         // paranoid null handling here, nothing should actually be null
@@ -167,18 +170,18 @@ public class DebugManager implements IDebugManager {
         if (pageContextRef == null || pageContext == null) {
             var msgBuilder = new StringBuilder();
             suspendedThreads.forEach(thread -> msgBuilder.append("<div>" + thread + "</div>"));
-            lastDumpedThing = "<div>couldn't get a page context, iterated over threads:</div>" + msgBuilder.toString();
-            return;
+            return "<div>couldn't get a page context, iterated over threads:</div>" + msgBuilder.toString();
         }
 
         // someDumpable could be null, but that should still dump as some kind of visualization of null
-        pushDump(pageContext, someDumpable);
+        return pushDump(pageContext, someDumpable);
     }
 
     // this is "single threaded" for now, only a single dumpable thing is tracked at once,
     // pushing another dump overwrites the old dump.
-    synchronized private void pushDump(PageContext pageContext, Object someDumpable) {
-        var thread = new Thread(() -> {
+    synchronized private String pushDump(PageContext pageContext, Object someDumpable) {
+        final var result = new Object(){ String value = "if this text is present, something went wrong when calling writeDump(...)"; };
+        final var thread = new Thread(() -> {
             try {
                 final var outputStream = new ByteArrayOutputStream();
                 PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
@@ -231,7 +234,7 @@ public class DebugManager implements IDebugManager {
                     });
 
                 freshEphemeralPageContext.flush();
-                lastDumpedThing = new String(outputStream.toByteArray(), "UTF-8");
+                result.value = wrapDumpInHtmlDoc(new String(outputStream.toByteArray(), "UTF-8"));
                 // String xxx = new String(outputStream.toByteArray(), "UTF-8");
                 // System.out.println(xxx);
 
@@ -266,6 +269,8 @@ public class DebugManager implements IDebugManager {
                 // thread is joined, discard exception
             }
         }
+
+        return result.value;
     }
 
     private final Cleaner cleaner = Cleaner.create();

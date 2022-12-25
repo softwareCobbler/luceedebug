@@ -24,5 +24,5 @@ public interface IDebugManager {
     public IDebugEntity[] getVariables(long id);
     public void registerCfStepHandler(CfStepCallback cb);
 
-    public void pushDump(ArrayList<Thread> suspendedThreads, int variableID);
+    public String pushDump(ArrayList<Thread> suspendedThreads, int variableID);
 }

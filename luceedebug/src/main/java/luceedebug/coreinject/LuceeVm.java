@@ -879,7 +879,7 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public void dump(int dapVariablesReference) {
+    public String dump(int dapVariablesReference) {
         // presumably, the requester is requesting to dump a variable because they
         // have at least one suspended thread they're investigating. We should have that thread,
         // or at least one suspended thread. It doesn't matter which thread we use, we just
@@ -889,7 +889,7 @@ public class LuceeVm implements ILuceeVm {
         // If we can figure out how to get those from some singleton somewhere then we wouldn't need
         // to do any thread lookup here.
         if (suspendedThreads.size() == 0) {
-            return;
+            return "<div>couldn't dump variable having variableId " + dapVariablesReference + "</div>";
         }
 
         //
@@ -904,6 +904,6 @@ public class LuceeVm implements ILuceeVm {
                 suspendedThreadsList.add(thread);
             }
         });
-        GlobalIDebugManagerHolder.debugManager.pushDump(suspendedThreadsList, dapVariablesReference);
+        return GlobalIDebugManagerHolder.debugManager.pushDump(suspendedThreadsList, dapVariablesReference);
     }
 }

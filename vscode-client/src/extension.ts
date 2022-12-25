@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { DumpViewProvider } from "./DumpView";
+
 let currentDebugSession : vscode.DebugSession | null = null;
 
 class CfDebugAdapter implements vscode.DebugAdapterDescriptorFactory {
@@ -35,6 +37,16 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
+	const dumpViewProvider = (() => {
+		const {dumpViewProvider, disposable} = DumpViewProvider.register(context);
+		context.subscriptions.push(disposable);
+		return dumpViewProvider;
+	})();
+
+	interface DumpResponse {
+		htmlDocument: string
+	}
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("luceedebug.dump", async (args?: Partial<DebugPaneContextMenuArgs>) => {
 			if (args?.variable === undefined) {
@@ -44,9 +56,14 @@ export function activate(context: vscode.ExtensionContext) {
 				// except the debug variables pane context menu.
 				return;
 			}
-			// need a timeout, or does this cb get wrapped in a timeout by whoever we're passing it to 
-			await currentDebugSession?.customRequest("dump", {variablesReference: args.variable.variablesReference});
-			vscode.env.openExternal(vscode.Uri.parse('http://localhost:10001'));
+			
+			// need a timeout? or does this cb get wrapped in a timeout by whoever we're passing it to 
+			const result : DumpResponse = await currentDebugSession?.customRequest("dump", {variablesReference: args.variable.variablesReference});
+			const uri = vscode.Uri.from({scheme: "luceedebug", path: args.variable.name, fragment: args.variable.variablesReference.toString()});
+			const html = result.htmlDocument;
+			dumpViewProvider.registerDump(uri, html);
+			vscode.commands.executeCommand('vscode.openWith', uri, DumpViewProvider.viewType);
+			//vscode.env.openExternal(vscode.Uri.parse('http://localhost:10001'));
 		})
 	);
 

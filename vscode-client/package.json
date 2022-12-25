@@ -23,6 +23,17 @@
     "vscode": "^1.63.0"
   },
   "contributes": {
+    "customEditors": [
+			{
+				"viewType": "luceedebug.dumpView",
+				"displayName": "luceedebug var dump",
+				"selector": [
+					{
+						"filenamePattern": "*.luceedebugdumpview"
+					}
+				]
+			}
+    ],
     "menus": {
       "debug/variables/context": [
         {
@@ -48,7 +59,7 @@
     "commands": [
       {
         "command": "luceedebug.dump",
-        "title": "luceedebug: dump value to browser",
+        "title": "luceedebug: dump",
         "enablement": "debugType == 'cfml'"
       }
     ],

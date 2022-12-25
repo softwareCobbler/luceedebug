@@ -426,9 +426,47 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
+    class DumpResponse {
+        private String htmlDocument;
+        public String getHtmlDocument() {
+            return htmlDocument;
+        }
+        public void setHtmlDocument(final String htmlDocument) {
+            this.htmlDocument = htmlDocument;
+        }
+        
+        @Override
+        @Pure
+        public String toString() {
+          ToStringBuilder b = new ToStringBuilder(this);
+          b.add("htmlDocument", this.htmlDocument);
+          return b.toString();
+        }
+
+        @Override
+        @Pure
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (this.getClass() != obj.getClass()) {
+                return false;
+            }
+            DumpResponse other = (DumpResponse) obj;
+            if (!this.htmlDocument.equals(other.htmlDocument)) {
+                return false;
+            }
+            return true;
+        }
+    }
+
     @JsonRequest
-	CompletableFuture<Void> dump(DumpArguments args) {
-        luceeVm_.dump(args.variablesReference);
-        return CompletableFuture.completedFuture(null);
+	CompletableFuture<DumpResponse> dump(DumpArguments args) {
+        final var response = new DumpResponse();
+        response.setHtmlDocument(luceeVm_.dump(args.variablesReference));
+        return CompletableFuture.completedFuture(response);
 	}
 }
