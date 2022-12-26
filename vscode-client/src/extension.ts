@@ -1,7 +1,5 @@
 import * as vscode from "vscode";
 
-import { DumpViewProvider } from "./DumpView";
-
 let currentDebugSession : vscode.DebugSession | null = null;
 
 class CfDebugAdapter implements vscode.DebugAdapterDescriptorFactory {
@@ -37,14 +35,33 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	const dumpViewProvider = (() => {
-		const {dumpViewProvider, disposable} = DumpViewProvider.register(context);
-		context.subscriptions.push(disposable);
-		return dumpViewProvider;
-	})();
-
 	interface DumpResponse {
 		htmlDocument: string
+	}
+
+	const webviewPanelByUri : {[uri: string]: vscode.WebviewPanel} = {}
+	const updateOrCreateWebview = (uri: vscode.Uri, html: string) => {
+		const uriString = uri.toString();
+		const panel = webviewPanelByUri[uriString];
+		if (panel) {
+			panel.webview.html = html;
+			panel.reveal(undefined, true);
+		}
+		else {
+			const panel =  vscode.window.createWebviewPanel(
+				'luceedebug',
+				uri.path,
+				vscode.ViewColumn.One,
+				{
+					enableScripts: true,
+				}
+			);
+			panel.webview.html = html;
+			webviewPanelByUri[uriString] = panel;
+			panel.onDidDispose(() => {
+				delete webviewPanelByUri[uriString];
+			});
+		}
 	}
 
 	context.subscriptions.push(
@@ -61,9 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 			const result : DumpResponse = await currentDebugSession?.customRequest("dump", {variablesReference: args.variable.variablesReference});
 			const uri = vscode.Uri.from({scheme: "luceedebug", path: args.variable.name, fragment: args.variable.variablesReference.toString()});
 			const html = result.htmlDocument;
-			dumpViewProvider.registerDump(uri, html);
-			vscode.commands.executeCommand('vscode.openWith', uri, DumpViewProvider.viewType);
-			//vscode.env.openExternal(vscode.Uri.parse('http://localhost:10001'));
+			updateOrCreateWebview(uri, html);
 		})
 	);
 
