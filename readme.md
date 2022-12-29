@@ -7,7 +7,7 @@ There are two components:
 - A Java agent
 - A VS Code extension
 
-The java agent needs a particular invocation and needs to be run as part of JVM/Lucee server startup.
+The java agent needs a particular invocation and needs to be run as part of the JVM/Lucee server startup.
 
 The VS Code client extension is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
@@ -41,17 +41,20 @@ Add the following to your java invocation. (Tomcat users can use the `setenv.sh`
 -javaagent:/abspath/to/luceedebug.jar=jdwpHost=localhost,jdwpPort=9999,debugHost=0.0.0.0,debugPort=10000,jarPath=/abspath/to/luceedebug.jar
 ```
 
-Most java devs will be familiar with the `agentlib` part. We need JDWP running, listening on a socket on localhost. luceedebug will attach to JDWP over a socket, running from within the same JVM. It stays attached for the life of the JVM.
-
-Note that JDWP `address` and luceedebug's `jdwpHost`/`jdwpPort` must match.
-
-The `debugPort` and `debugHost` options are the host/port that the VS Code debugger attaches to. Note that JDWP can usually listen on localhost (the connection to JDWP from luceedebug is a loopback connection).
-
-If Lucee is running in a docker container, the `debugHost` must be `0.0.0.0`. However, be careful not to do this on a publicly-accessible, unprotected server, as you could expose the debugger to the public (which would be a major security vulnerability).
-
-The `jarPath` argument is the absolute path to the luceedebug.jar file. Unfortunately we have to say its name twice! One tells the JVM which jar to use as a java agent, the second is an argument to the java agent about where to find the jar it will load debugging instrumentation from.
-
-(There didn't seem to be an immediately obvious way to pull the name of "the current" jar file from an agent's `premain`, but maybe it's just been overlooked. If you know let us know!)
+* `agentlib`: Configures JDWP, which is the lower-level Java debugging protocol that the luceedebug agent connects with. (Note: The VS Code debugger connects to the _luceedebug_ agent, not JDWP, so JDWP/`agentlib` usually doesn't need to be modified/customized.)
+  * `address`: Leave this as `localhost:9999`, unless you have a compelling reason to change it (e.g., if some other service is already listening on port 9999).
+  * All other arguments should be used verbatim unless you have a compelling reason to change them.
+* `javaagent`: Configures the luceedebug agent, itself.
+  * `/abspath/to/luceedebug.jar` (the first token in the `javaagent`): The absolute path by which your server can find the luceedebug agent library. You must change this to match your environment.
+  * `jdwpHost`/`jdwpPort`: The luceedebug agent connects to JDWP via this host/port. These values must match those in `agentlib`'s `address`.
+  * `debugHost`/`debugPort`: These configure the host/port that the VS Code debugger attaches to.
+  
+    Set this to the interface on which you want the debugger to listen. In non-docker environments, this would be the IP address of a particular interface.
+    
+    If Lucee is running in a docker container, the `debugHost` _must_ be `0.0.0.0` (i.e., "listen on all interfaces"). However, be careful not to use this value on a publicly-accessible, unprotected server, as you could expose the debugger to the public (which would be a major security vulnerability).
+  * `jarPath`: This value must be identical to the first token in the `javaagent` arguments. Unfortunately, we have to specify the path twice! One tells the JVM which jar to use as a java agent, the second is an argument specifying from where the java agent will load debugging instrumentation.
+  
+    (There didn't seem to be an immediately obvious way to pull the name of "the current" jar file from an agent's `premain`, but maybe it's just been overlooked. If you know let us know!)
 
 ### VS Code luceedebug Debugger Extension
 
@@ -82,7 +85,7 @@ If you want to hack the extension, itself, build/run instructions follow.
 Prerequisites:
 * `npm`
 * `typescript`
-   * Mac: `brew install typescript`
+  * Mac: `brew install typescript`
 
 ```
 # vs code client
@@ -144,7 +147,7 @@ Currently, it is a simple prefix replacement, e.g.:
 ]
 ```
 
-In the above example, the IDE would announce, "set a breakpoint in `/foo/bar/baz/TheThing.cfc`, which the server will understand as, "set a breakpoint in `/serverAppRoot/bar/baz/TheThing.cfc`".
+In the above example, the IDE would announce, "set a breakpoint in `/foo/bar/baz/TheThing.cfc`, which the server will understand as "set a breakpoint in `/serverAppRoot/bar/baz/TheThing.cfc`".
 
 Omitting `pathTransforms` means no path transformation will take place.
 
