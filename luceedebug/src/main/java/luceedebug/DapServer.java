@@ -19,6 +19,7 @@ import org.eclipse.lsp4j.jsonrpc.Launcher;
 
 public class DapServer implements IDebugProtocolServer {
     private final ILuceeVm luceeVm_;
+    private final Config config_;
     private ArrayList<IPathTransform> pathTransforms = new ArrayList<>();
 
     interface TransformRunner {
@@ -56,8 +57,9 @@ public class DapServer implements IDebugProtocolServer {
 
     private IDebugProtocolClient clientProxy_;
 
-    private DapServer(ILuceeVm luceeVm) {
+    private DapServer(ILuceeVm luceeVm, Config config) {
         this.luceeVm_ = luceeVm;
+        this.config_ = config;
 
         this.luceeVm_.registerStepEventCallback(i64_threadID -> {
             final var i32_threadID = (int)(long)i64_threadID;
@@ -144,8 +146,8 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
-    static public DapEntry create(ILuceeVm luceeVm, InputStream in, OutputStream out) {
-        var server = new DapServer(luceeVm);
+    static public DapEntry create(ILuceeVm luceeVm, Config config, InputStream in, OutputStream out) {
+        var server = new DapServer(luceeVm, config);
         var serverLauncher = DSPLauncher.createServerLauncher(server, in, out);
         server.clientProxy_ = serverLauncher.getRemoteProxy();
         return new DapEntry(server, serverLauncher);
@@ -166,7 +168,7 @@ public class DapServer implements IDebugProtocolServer {
         var maybeServerPrefix = map.containsKey("cfPrefix") ? map.get("cfPrefix") : map.get("serverPrefix");
 
         if (maybeServerPrefix instanceof String && maybeIdePrefix instanceof String) {
-            return new PrefixPathTransform((String)maybeIdePrefix, (String)maybeServerPrefix);
+            return new PrefixPathTransform(config_, (String)maybeIdePrefix, (String)maybeServerPrefix);
         }
         else {
             return null;
@@ -298,6 +300,7 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
+        final var path = config_.canonicalizedPath(args.getSource().getPath());
         final var absPath = applyPathTransformsIdeToCf(args.getSource().getPath());
         System.out.println("bp for " + args.getSource().getPath() + " -> " + absPath);
         final int size = args.getBreakpoints().length;

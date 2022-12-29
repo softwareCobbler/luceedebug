@@ -193,7 +193,9 @@ public class DebugManager implements IDebugManager {
 
         switch (type) {
             case CfStepRequest.STEP_INTO:
+                // fallthrough
             case CfStepRequest.STEP_OVER:
+                // fallthrough
             case CfStepRequest.STEP_OUT: {
                 stepRequestByThread.put(thread, new CfStepRequest(frame.getDepth(), type));
                 return;
