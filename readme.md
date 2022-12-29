@@ -63,7 +63,6 @@ The VS Code luceedebug extension is available on the VS Code Marketplace. If you
 
 - Go to the "run and debug" menu (looks like a bug with a play button)
 - Add a CFML debug configuration (if you haven't already--it only needs to be done once): Run > Open Configurations. (See the [configuration example, below](#vs-code-extension-configuration).)
-- Prime the Java agent by warming up your application. (E.g., request its home page.) Note: This step may eventually be obsoleted by #13.
 - Attach to the Lucee server
   - With a CFML file open, click the "Run and Debug" icon in the left menu.
   - In the select list labeled "Run and Debug," choose the name of the configuration you used in the `name` key of the debug configuration. (In the [configuration example, below](#vs-code-extension-configuration), it would be `Project A`.)
