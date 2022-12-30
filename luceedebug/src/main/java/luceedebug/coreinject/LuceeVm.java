@@ -934,8 +934,6 @@ public class LuceeVm implements ILuceeVm {
         final var result = new ArrayList<String>();
         for (var klassMap : klassMap_.values()) {
             result.add(klassMap.sourceName.transformed);
-            System.out.println("GET a " + klassMap.sourceName.original);
-            System.out.println("GET b " + klassMap.sourceName.transformed);
         }
         return result.toArray(size -> new String[size]);
     }
