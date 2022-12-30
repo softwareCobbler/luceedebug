@@ -15,6 +15,7 @@ public class LuceeTransformer implements ClassFileTransformer {
     private final int jdwpPort;
     private final String debugHost;
     private final int debugPort;
+    private final Config config;
 
     static public class ClassInjection {
         final String name;
@@ -49,7 +50,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         }
     }
     public void makeSystemOutPrintlnSafeForUseInTransformer() {
-        System.out.println("");
+        System.out.print("");
         systemOutPrintlnLoaded = true;
         for (var s : pendingPrintln) {
             println(s);
@@ -61,7 +62,8 @@ public class LuceeTransformer implements ClassFileTransformer {
         String jdwpHost,
         int jdwpPort,
         String debugHost,
-        int debugPort
+        int debugPort,
+        Config config
     ) {
         this.pendingCoreLoaderClassInjections = injections;
 
@@ -69,6 +71,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         this.jdwpPort = jdwpPort;
         this.debugHost = debugHost;
         this.debugPort = debugPort;
+        this.config = config;
     }
 
     public byte[] transform(ClassLoader loader,
@@ -102,7 +105,7 @@ public class LuceeTransformer implements ClassFileTransformer {
                     GlobalIDebugManagerHolder.debugManager = (IDebugManager)klass.getConstructor().newInstance();
 
                     System.out.println("[luceedebug] Loaded " + GlobalIDebugManagerHolder.debugManager + " with ClassLoader '" + GlobalIDebugManagerHolder.debugManager.getClass().getClassLoader() + "'");
-                    GlobalIDebugManagerHolder.debugManager.spawnWorker(jdwpHost, jdwpPort, debugHost, debugPort);
+                    GlobalIDebugManagerHolder.debugManager.spawnWorker(config, jdwpHost, jdwpPort, debugHost, debugPort);
                 }
                 catch (Throwable e) {
                     e.printStackTrace();

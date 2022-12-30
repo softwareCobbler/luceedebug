@@ -13,7 +13,7 @@ public interface IDebugManager {
         void call(Thread thread, int distanceToJvmFrame);
     }
     
-    void spawnWorker(String jdwpHost, int jdwpPort, String debugHost, int debugPort);
+    void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort);
     public void pushCfFrame(lucee.runtime.PageContext pc, String filenameAbsPath, int distanceToFrame);
     public void popCfFrame();
     public void step(int depthToFrame, int currentLine);

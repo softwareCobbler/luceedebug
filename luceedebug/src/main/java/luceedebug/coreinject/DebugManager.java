@@ -53,18 +53,18 @@ public class DebugManager implements IDebugManager {
         }
     }
 
-    public void spawnWorker(String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
+    public void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
         System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
 
         System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
 
         VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
-        LuceeVm luceeVm = new LuceeVm(vm);
+        LuceeVm luceeVm = new LuceeVm(config, vm);
 
         new Thread(() -> {
             System.out.println("[luceedebug] jdwp self connect OK");
-            DapServer.createForSocket(luceeVm, debugHost, debugPort);
+            DapServer.createForSocket(luceeVm, config, debugHost, debugPort);
         }, threadName).start();
 
         // new Thread(() -> {
@@ -388,7 +388,9 @@ public class DebugManager implements IDebugManager {
 
         switch (type) {
             case CfStepRequest.STEP_INTO:
+                // fallthrough
             case CfStepRequest.STEP_OVER:
+                // fallthrough
             case CfStepRequest.STEP_OUT: {
                 stepRequestByThread.put(thread, new CfStepRequest(frame.getDepth(), type));
                 return;

@@ -61,6 +61,11 @@
         "command": "luceedebug.dump",
         "title": "luceedebug: dump (experimental)",
         "enablement": "debugType == 'cfml'"
+      },
+      {
+        "command": "luceedebug.debugBreakpointBindings",
+        "title": "luceedebug: show class and breakpoint info",
+        "enablement": "debugType == 'cfml'"
       }
     ],
     "debuggers": [

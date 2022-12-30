@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
 
 public class DapServer implements IDebugProtocolServer {
     private final ILuceeVm luceeVm_;
+    private final Config config_;
     private ArrayList<IPathTransform> pathTransforms = new ArrayList<>();
 
     interface TransformRunner {
@@ -36,7 +38,7 @@ public class DapServer implements IDebugProtocolServer {
         for (var transform : pathTransforms) {
             var result = runner.run(transform, s);
             if (result.isPresent()) {
-                return result.get();
+                return config_.canonicalizePath(result.get());
             }
         }
         // no transform matched
@@ -59,8 +61,9 @@ public class DapServer implements IDebugProtocolServer {
 
     private IDebugProtocolClient clientProxy_;
 
-    private DapServer(ILuceeVm luceeVm) {
+    private DapServer(ILuceeVm luceeVm, Config config) {
         this.luceeVm_ = luceeVm;
+        this.config_ = config;
 
         this.luceeVm_.registerStepEventCallback(i64_threadID -> {
             final var i32_threadID = (int)(long)i64_threadID;
@@ -115,7 +118,7 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
-    static public DapEntry createForSocket(ILuceeVm luceeVm, String host, int port) {
+    static public DapEntry createForSocket(ILuceeVm luceeVm, Config config, String host, int port) {
         try (var server = new ServerSocket()) {
             var addr = new InetSocketAddress(host, port);
             server.setReuseAddress(true);
@@ -133,7 +136,7 @@ public class DapServer implements IDebugProtocolServer {
 
                 System.out.println("[luceedebug] accepted debugger connection");
 
-                var dapEntry = create(luceeVm, socket.getInputStream(), socket.getOutputStream());
+                var dapEntry = create(luceeVm, config, socket.getInputStream(), socket.getOutputStream());
                 var future = dapEntry.launcher.startListening();
                 future.get(); // block until the connection closes
 
@@ -147,8 +150,8 @@ public class DapServer implements IDebugProtocolServer {
         }
     }
 
-    static public DapEntry create(ILuceeVm luceeVm, InputStream in, OutputStream out) {
-        var server = new DapServer(luceeVm);
+    static public DapEntry create(ILuceeVm luceeVm, Config config, InputStream in, OutputStream out) {
+        var server = new DapServer(luceeVm, config);
         var serverLauncher = DSPLauncher.createServerLauncher(server, in, out);
         server.clientProxy_ = serverLauncher.getRemoteProxy();
         return new DapEntry(server, serverLauncher);
@@ -301,8 +304,8 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var absPath = applyPathTransformsIdeToCf(args.getSource().getPath());
-        System.out.println("bp for " + args.getSource().getPath() + " -> " + absPath);
+        final var path = new OriginalAndTransformedString(args.getSource().getPath(), applyPathTransformsIdeToCf(args.getSource().getPath()));
+        System.out.println("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
         for (int i = 0; i < size; ++i) {
@@ -310,7 +313,7 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (var cfBreakpoint : luceeVm_.bindBreakpoints(absPath, lines)) {
+        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(cfBreakpoint));
         }
         
@@ -467,6 +470,84 @@ public class DapServer implements IDebugProtocolServer {
 	CompletableFuture<DumpResponse> dump(DumpArguments args) {
         final var response = new DumpResponse();
         response.setHtmlDocument(luceeVm_.dump(args.variablesReference));
+        return CompletableFuture.completedFuture(response);
+	}
+
+    class DebugBreakpointBindingsResponse {
+        /** as we see them on the server, after fs canonicalization */
+        private String[] canonicalFilenames;
+        /** [original, transformed][] */
+        private String[][] breakpoints;
+
+        public String[] getCanonicalFilenames() {
+            return canonicalFilenames;
+        }
+        public void setCanonicalFilenames(final String[] v) {
+            this.canonicalFilenames = v;
+        }
+
+        public String[][] getBreakpoints() {
+            return breakpoints;
+        }
+        public void setBreakpoints(final String[][] v) {
+            this.breakpoints = v;
+        }
+        
+        @Override
+        @Pure
+        public String toString() {
+            ToStringBuilder b = new ToStringBuilder(this);
+            b.add("canonicalFilenames", this.canonicalFilenames);
+            b.add("breakpoints", this.breakpoints);
+            return b.toString();
+        }
+
+        @Override
+        @Pure
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (this.getClass() != obj.getClass()) {
+                return false;
+            }
+
+            DebugBreakpointBindingsResponse other = (DebugBreakpointBindingsResponse) obj;
+
+            if (this.canonicalFilenames == null) {
+                if (other.canonicalFilenames != null) {
+                    return false;
+                }
+            }
+            else if (!Arrays.deepEquals(this.canonicalFilenames, other.canonicalFilenames)) {
+                return false;
+            }
+
+            if (this.breakpoints == null) {
+                if (other.breakpoints != null) {
+                    return false;
+                }
+            }
+            else if (!Arrays.deepEquals(this.breakpoints, other.breakpoints)) {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    class DebugBreakpointBindingsArguments {
+    }
+
+
+    @JsonRequest
+	CompletableFuture<DebugBreakpointBindingsResponse> debugBreakpointBindings(DebugBreakpointBindingsArguments args) {
+        final var response = new DebugBreakpointBindingsResponse();
+        response.setCanonicalFilenames(luceeVm_.getTrackedCanonicalFileNames());
+        response.setBreakpoints(luceeVm_.getBreakpointDetail());
         return CompletableFuture.completedFuture(response);
 	}
 }

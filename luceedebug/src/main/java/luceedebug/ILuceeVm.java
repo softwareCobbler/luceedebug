@@ -32,7 +32,7 @@ public interface ILuceeVm {
      */
     public IDebugEntity[] getVariables(long ID);
 
-    public IBreakpoint[] bindBreakpoints(String absPath, int[] lines);
+    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines);
 
     public void continue_(long jdwpThreadID);
 
@@ -46,4 +46,11 @@ public interface ILuceeVm {
     public void clearAllBreakpoints();
 
     public String dump(int dapVariablesReference);
+
+    public String[] getTrackedCanonicalFileNames();
+    /**
+     * array of tuples
+     * [original path, transformed path][]
+     **/
+    public String[][] getBreakpointDetail();
 }
