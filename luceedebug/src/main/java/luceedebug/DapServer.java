@@ -41,8 +41,8 @@ public class DapServer implements IDebugProtocolServer {
                 return config_.canonicalizePath(result.get());
             }
         }
-        // no transform matched
-        return s;
+        // no transform matched, but still needs canonicalization
+        return config_.canonicalizePath(s);
     }
 
     private String applyPathTransformsIdeToCf(String s) {
