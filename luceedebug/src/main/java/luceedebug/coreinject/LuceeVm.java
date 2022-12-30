@@ -526,7 +526,6 @@ public class LuceeVm implements ILuceeVm {
             if (replayableBreakpointRequests != null) {
                 rebindBreakpoints(klassMap.sourceName.transformed, replayableBreakpointRequests);
             }
-            System.out.println("[luceedebug] tracking '" + klassMap.sourceName.original + "' as '" + klassMap.sourceName.transformed + "'");
         }
         catch (Throwable e) {
             e.printStackTrace();
