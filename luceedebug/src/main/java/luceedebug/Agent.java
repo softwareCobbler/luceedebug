@@ -169,7 +169,9 @@ public class Agent {
                 })
                 .toArray(size -> new ClassInjection[size]);
 
-            final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort);
+            final var config = new Config(Config.checkIfFileSystemIsCaseSensitive(parsedArgs.jarPath));
+            System.out.println("[luceedebug] fs is case sensitive: " + config.getFsIsCaseSensitive());
+            final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort, config);
             inst.addTransformer(transformer);
             transformer.makeSystemOutPrintlnSafeForUseInTransformer();
         }

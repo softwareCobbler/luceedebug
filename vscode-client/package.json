@@ -38,8 +38,8 @@
     ],
     "commands": [
       {
-        "command": "luceeDebugger.showLoadedClasses",
-        "title": "Lucee debugger: Show loaded CF classes",
+        "command": "luceedebug.debugBreakpointBindings",
+        "title": "luceedebug: show class and breakpoint info",
         "enablement": "debugType == 'cfml'"
       }
     ],
