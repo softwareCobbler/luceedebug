@@ -121,7 +121,7 @@ A CFML debug configuration looks like:
     "name": "Project A",
     "hostName": "localhost",
     "port": 10000,
-    // optional
+    // optional; only necessary when ide and lucee paths don't match
     "pathTransforms": [
       {
         "idePrefix": "${workspaceFolder}",
@@ -130,11 +130,16 @@ A CFML debug configuration looks like:
     ]
 }
 ```
-Hostname and port should match the `debugHost` and `debugPort` you've configured the java agent with.
+`hostName`/`port` should match the `debugHost`/`debugPort` of the Java agent's configuration. (There are exceptions; e.g., on remote hosts where DNS and/or port forwarding are in play.)
 
 #### Mapping Paths with `pathTransforms`
 
-`pathTransforms` maps between "IDE paths" and "Lucee server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`. To keep the IDE and Lucee talking about the same files, we need to know how to transform these path names.
+
+`pathTransforms` maps between "IDE paths" and "Lucee server paths". For example, in your editor, you may be working on a file called `/foo/bar/baz/TheThing.cfc`, but it runs in a container and Lucee sees it as `/serverAppRoot/bar/baz/TheThing.cfc`.
+
+In the case of local debugging (when there are no virtual machines or containers involved), you may not need a `pathTransforms` configuration, because both your IDE and Lucee probably know any given CFML file by the same path name.
+
+However, in environments where the IDE path of a CFML file isn't identical to the Lucee path, luceedebug needs to know how to transform these paths.
 
 Currently, it is a simple prefix replacement, e.g.:
 
@@ -149,7 +154,7 @@ Currently, it is a simple prefix replacement, e.g.:
 
 In the above example, the IDE would announce, "set a breakpoint in `/foo/bar/baz/TheThing.cfc`, which the server will understand as "set a breakpoint in `/serverAppRoot/bar/baz/TheThing.cfc`".
 
-Omitting `pathTransforms` means no path transformation will take place.
+Omitting `pathTransforms` means no path transformation will take place. (It can be omitted when IDE paths match server paths.)
 
 Multiple `pathTransforms`  may be specified if more than one mapping is needed. The first match wins.
 
@@ -175,4 +180,4 @@ Example:
 In this example:
 
 * A breakpoint set on `/Users/sc/projects/app/Application.cfc` will match the last transform and map to `/var/www/Application.cfc` on the server.
-* A breakpoint set on `/var/www/subapp/b/helper/HelpUtil.cfc` will match the first transform and map to `/var/www/subapp/b/helper/HelpUtil.cfc` on the server.
+* A breakpoint set on `/Users/sc/projects/subapp_b_helper/HelpUtil.cfc` will match the first transform and map to `/var/www/subapp/b/helper/HelpUtil.cfc` on the server.
