@@ -25,4 +25,9 @@ public interface IDebugManager {
     public void registerCfStepHandler(CfStepCallback cb);
 
     public String pushDump(ArrayList<Thread> suspendedThreads, int variableID);
+
+    /**
+     * @return String, or null if there is no path for the target ref
+     */
+    public String getSourcePathForVariablesRef(int variablesRef);
 }

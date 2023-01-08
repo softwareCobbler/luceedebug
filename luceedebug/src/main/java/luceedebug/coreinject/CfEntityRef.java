@@ -76,10 +76,18 @@ class CfEntityRef {
         ArrayList<IDebugEntity> results = new ArrayList<>();
         
         Set<Map.Entry<String,Object>> entries = map.entrySet();
+
+        // cfc<Foo> {m1: thing, m2: thing, this: cfc<Foo>}
+        // expanding 'this' -> {m1: thing, getM1: lucee.runtime.type.UDFGetter, m2: thing, ...}
+        // If expanding "this", show functionLikes,
+        // otherwise, we're expanding a direct ref, and we don't want to show functionLikes
+        final var skipFunctionLikes = map instanceof lucee.runtime.ComponentScope && !this.name.toLowerCase().equals("this");
         
         for (Map.Entry<String, Object> entry : entries) {
-            IDebugEntity val = asValue(entry.getKey(), entry.getValue());
-            results.add(val);
+            IDebugEntity val = maybeNull_asValue(entry.getKey(), entry.getValue(), skipFunctionLikes);
+            if (val != null) {
+                results.add(val);
+            }
         }
 
         results.sort(xscopeByName);    
@@ -93,14 +101,26 @@ class CfEntityRef {
 
         // cf 1-indexed
         for (int i = 1; i <= array.size(); ++i) {
-            IDebugEntity val = asValue(Integer.toString(i), array.get(i, null));
-            result.add(val);
+            IDebugEntity val = maybeNull_asValue(Integer.toString(i), array.get(i, null));
+            if (val != null) {
+                result.add(val);
+            }
         }
 
         return result.toArray(new IDebugEntity[result.size()]);
     }
 
-    private IDebugEntity asValue(String name, Object cfEntity) {
+    /**
+     * returns null for "this should not be displayed as a debug entity", which sort of a kludgy way
+     * to clean up cfc value info.
+     * which is used to cut down on noise from CFC getters/setters/member-functions which aren't too useful for debugging.
+     * Maybe such things should be optionally included as per some configuration.
+     */
+    private IDebugEntity maybeNull_asValue(String name, Object cfEntity) {
+        return maybeNull_asValue(name, cfEntity, false);
+    }
+
+    private IDebugEntity maybeNull_asValue(String name, Object cfEntity, boolean skipFunctionLikes) {
         DebugEntity val = new DebugEntity();
         val.name = name;
 
@@ -113,6 +133,9 @@ class CfEntityRef {
         else if (cfEntity instanceof Number) {
             val.value = cfEntity.toString();
         }
+        else if (cfEntity instanceof Boolean) {
+            val.value = cfEntity.toString();
+        }
         else if (cfEntity instanceof Array) {
             CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
             owned_keepAlive.add(objRef);
@@ -120,6 +143,13 @@ class CfEntityRef {
             int len = ((Array)objRef.cfEntity.wrapped).size();
             val.value = "Array (" + len + ")";
             val.variablesReference = objRef.id;
+        }
+        else if (
+            skipFunctionLikes &&
+            (cfEntity instanceof lucee.runtime.type.UDFGetterProperty
+            || cfEntity instanceof lucee.runtime.type.UDFSetterProperty
+            || cfEntity instanceof lucee.runtime.type.UDFImpl)) {
+            return null;
         }
         // too broad, will match components and etc.
         else if (cfEntity instanceof Map) {
@@ -140,7 +170,7 @@ class CfEntityRef {
             owned_keepAlive.add(objRef);
 
             try {
-                val.value = "<?> " + cfEntity.toString();
+                val.value = cfEntity.getClass().toString();
             }
             catch (Throwable x) {
                 val.value = "<?> (no string representation available)";
@@ -164,5 +194,24 @@ class CfEntityRef {
             return ((Array)cfEntity).size();
         }
         return 0;
+    }
+
+    /**
+     * @return String, or null if there is no path for the underlying entity
+     */
+    String getSourcePath() {
+        final var obj = cfEntity.wrapped;
+        if (obj instanceof Component) {
+            return ((Component)obj).getPageSource().getPhyscalFile().getAbsolutePath();
+        }
+        else if (obj instanceof lucee.runtime.type.UDFImpl) {
+            return ((lucee.runtime.type.UDFImpl)obj).properties.getPageSource().getPhyscalFile().getAbsolutePath();
+        }
+        else if (obj instanceof lucee.runtime.type.UDFGSProperty) {
+            return ((lucee.runtime.type.UDFGSProperty)obj).getPageSource().getPhyscalFile().getAbsolutePath();
+        }
+        else {
+            return null;
+        }
     }
 }

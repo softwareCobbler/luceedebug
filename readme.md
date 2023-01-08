@@ -2,6 +2,8 @@
 
 luceedebug is a step debugger for Lucee.
 
+![misc. features of a debug session indicating that luceedebug is a step debugger for Lucee.](assets/whatisit.png)
+
 There are two components:
 
 - A Java agent

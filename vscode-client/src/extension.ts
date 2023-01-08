@@ -66,11 +66,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("luceedebug.dump", async (args?: Partial<DebugPaneContextMenuArgs>) => {
-			if (args?.variable === undefined) {
-				// this could be called from the command pallette (press F1 and type it)
+			if (args?.variable === undefined || args.variable.variablesReference === 0) {
+				// This could be called from the command pallette (press F1 and type it)
 				// rather than from the debug variables pane context menu. Maybe there is a better
 				// way to determine where this was called from, or prevent it from being called anywhere
 				// except the debug variables pane context menu.
+				//
+				// If variablesReference is 0, then the value is a primitive value and we don't service the request
+				//
 				return;
 			}
 			
@@ -124,6 +127,27 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			luceedebugTextDocumentProvider.addOrReplaceTextDoc(uri, text);
 			
+			const doc = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(doc);
+		})
+	)
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("luceedebug.openFileForVariableSourcePath", async (args?: Partial<DebugPaneContextMenuArgs>) => {
+			if (!currentDebugSession || !args || args.variable === undefined || args.variable.variablesReference === 0) {
+				// doesn't exist or represents a primitive value
+				return;
+			}
+
+			interface GetSourcePathResponse {
+				path: string | null
+			}
+
+			const data : GetSourcePathResponse = await currentDebugSession.customRequest("getSourcePath", {variablesReference: args.variable.variablesReference});
+			if (!data.path) {
+				return;
+			}
+			const uri = vscode.Uri.from({scheme: "file", path: data.path});
 			const doc = await vscode.workspace.openTextDocument(uri);
 			await vscode.window.showTextDocument(doc);
 		})

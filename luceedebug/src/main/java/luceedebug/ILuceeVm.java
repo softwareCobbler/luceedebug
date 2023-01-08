@@ -53,4 +53,9 @@ public interface ILuceeVm {
      * [original path, transformed path][]
      **/
     public String[][] getBreakpointDetail();
+
+    /**
+     * @return String | null
+     */
+    public String getSourcePathForVariablesRef(int variablesRef);
 }

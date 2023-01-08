@@ -74,7 +74,6 @@ public class DapServer implements IDebugProtocolServer {
         });
 
         this.luceeVm_.registerBreakpointEventCallback((i64_threadID, i32_bpID) -> {
-            System.out.println("(breakpoint callback in dapserver) threadID=" + i64_threadID + ", bpID=" + i32_bpID);
             final int i32_threadID = (int)(long)i64_threadID;
             var event = new StoppedEventArguments();
             event.setReason("breakpoint");
@@ -548,6 +547,103 @@ public class DapServer implements IDebugProtocolServer {
         final var response = new DebugBreakpointBindingsResponse();
         response.setCanonicalFilenames(luceeVm_.getTrackedCanonicalFileNames());
         response.setBreakpoints(luceeVm_.getBreakpointDetail());
+        return CompletableFuture.completedFuture(response);
+	}
+
+    class GetSourcePathArguments {
+        private int variablesReference;
+
+        public int getVariablesReference() {
+            return variablesReference;
+        }
+        public void setBreakpoints(int v) {
+            this.variablesReference = v;
+        }
+
+        @Override
+        @Pure
+        public String toString() {
+            ToStringBuilder b = new ToStringBuilder(this);
+            b.add("variablesReference", this.variablesReference);
+            return b.toString();
+        }
+
+        @Override
+        @Pure
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (this.getClass() != obj.getClass()) {
+                return false;
+            }
+
+            GetSourcePathArguments other = (GetSourcePathArguments) obj;
+
+            if (this.variablesReference != other.variablesReference) {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    class GetSourcePathResponse {
+        private String path;
+
+        public String getPath() {
+            return path;
+        }
+        public void setPath(String path) {
+            this.path = path;
+        }
+
+        @Override
+        @Pure
+        public String toString() {
+            ToStringBuilder b = new ToStringBuilder(this);
+            b.add("path", this.path);
+            return b.toString();
+        }
+
+        @Override
+        @Pure
+        public boolean equals(final Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (this.getClass() != obj.getClass()) {
+                return false;
+            }
+
+            GetSourcePathResponse other = (GetSourcePathResponse) obj;
+
+            if (!this.path.equals(other.path)) {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    @JsonRequest
+	CompletableFuture<GetSourcePathResponse> getSourcePath(GetSourcePathArguments args) {
+        final var response = new GetSourcePathResponse();
+        final var serverPath = luceeVm_.getSourcePathForVariablesRef(args.getVariablesReference());
+
+        if (serverPath != null) {
+            response.setPath(applyPathTransformsCfToIde(serverPath));
+        }
+        else {
+            response.setPath(null);
+        }
+
         return CompletableFuture.completedFuture(response);
 	}
 }

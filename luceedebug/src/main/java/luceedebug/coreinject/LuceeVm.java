@@ -382,10 +382,7 @@ public class LuceeVm implements ILuceeVm {
             // But, `done` will not be true until the work is done.
             // The worker will suspend *this* thread, then do stuff, and then unsuspend it.
             // After unspending it, the worker will set done=true and we will be unblocked
-            var start = System.nanoTime();
-            while (!done.get());
-            var end = System.nanoTime();
-            System.out.println("Spin wait on step completition handler took " + (((end -start) / 1e6) + "ms"));
+            while (!done.get()); // wait here is ~10ms
         });
     }
 
@@ -849,7 +846,6 @@ public class LuceeVm implements ILuceeVm {
 
         steppingState = SteppingState.stepping;
 
-        System.out.println(" STEP IN");
         var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadID);
         var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
 
@@ -950,5 +946,9 @@ public class LuceeVm implements ILuceeVm {
             }
         }
         return result.stream().map(u -> u.toArray(new String[0])).toArray(String[][]::new);
+    }
+
+    public String getSourcePathForVariablesRef(int variablesRef) {
+        return GlobalIDebugManagerHolder.debugManager.getSourcePathForVariablesRef(variablesRef);
     }
 }

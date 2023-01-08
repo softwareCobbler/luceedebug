@@ -54,7 +54,6 @@ public class DebugManager implements IDebugManager {
     }
 
     public void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
-        System.out.println("[luceedebug] instrumented PageContextImpl <clinit> called spawnWorker...");
         final String threadName = "luceedebug-worker";
 
         System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
@@ -312,7 +311,7 @@ public class DebugManager implements IDebugManager {
 
     synchronized public IDebugEntity[] getScopesForFrame(long frameID) {
         DebugFrame frame = frameTracker.get(frameID);
-        System.out.println("Get scopes for frame, frame was " + frame);
+        //System.out.println("Get scopes for frame, frame was " + frame);
         if (frame == null) {
             return new IDebugEntity[0];
         }
@@ -464,8 +463,8 @@ public class DebugManager implements IDebugManager {
                 double elapsed_ms = (end - request.__debug__startTime) / 1e6;
                 double stepsPerMs = request.__debug__steps / elapsed_ms;
 
-                System.out.println("  currentframedepth=" + frame.getDepth() + ", startframedepth=" + request.startDepth + ", notifying native of step occurence...");
-                System.out.println("    " + request.__debug__steps + " cf steps in " + elapsed_ms + "ms for " + stepsPerMs + " steps/ms, overhead was " + (request.__debug__stepOverhead / 1e6) + "ms");
+                // System.out.println("  currentframedepth=" + frame.getDepth() + ", startframedepth=" + request.startDepth + ", notifying native of step occurence...");
+                // System.out.println("    " + request.__debug__steps + " cf steps in " + elapsed_ms + "ms for " + stepsPerMs + " steps/ms, overhead was " + (request.__debug__stepOverhead / 1e6) + "ms");
 
                 clearStepRequest(currentThread);
                 notifyStep(currentThread, distanceToActualFrame + 1);
@@ -560,6 +559,19 @@ public class DebugManager implements IDebugManager {
             // we popped the last frame, so we destroy the whole stack
             cfStackByThread.remove(currentThread);
             pageContextByThread.remove(currentThread);
+        }
+    }
+
+    public String getSourcePathForVariablesRef(int variablesRef) {
+        var ref = refTracker.maybeGetFromId(variablesRef);
+        if (ref == null) {
+            return null;
+        }
+        else {
+            // paranoid null handling should not be necessary here
+            return ref.wrapped == null
+                ? null
+                : ref.wrapped.getSourcePath();
         }
     }
 }

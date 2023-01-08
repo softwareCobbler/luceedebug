@@ -39,7 +39,10 @@
         {
           "when": "debugType == 'cfml'",
           "command": "luceedebug.dump"
-          
+        },
+        {
+          "when": "debugType == 'cfml'",
+          "command": "luceedebug.openFileForVariableSourcePath"
         }
       ]
     },
@@ -59,12 +62,17 @@
     "commands": [
       {
         "command": "luceedebug.dump",
-        "title": "luceedebug: dump (experimental)",
+        "title": "luceedebug: dump",
         "enablement": "debugType == 'cfml'"
       },
       {
         "command": "luceedebug.debugBreakpointBindings",
         "title": "luceedebug: show class and breakpoint info",
+        "enablement": "debugType == 'cfml'"
+      },
+      {
+        "command": "luceedebug.openFileForVariableSourcePath",
+        "title": "luceedebug: open defining file",
         "enablement": "debugType == 'cfml'"
       }
     ],
