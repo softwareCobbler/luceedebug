@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 
 import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
@@ -222,7 +223,7 @@ public class DapServer implements IDebugProtocolServer {
         return CompletableFuture.completedFuture(null);
     }
 
-    static final Comparator<org.eclipse.lsp4j.debug.Thread> threadNameComparator = Comparator.comparing(thread -> thread.getName().toLowerCase());
+    static final Pattern threadNamePrefixAndDigitSuffix = Pattern.compile("^(.+?)(\\d+)$");
 
     @Override
     public CompletableFuture<ThreadsResponse> threads() {
@@ -235,7 +236,30 @@ public class DapServer implements IDebugProtocolServer {
             lspThreads.add(lspThread);
         }
         
-        lspThreads.sort(threadNameComparator);
+        // a lot of thread names like "Thread-Foo-1" and "Thread-Foo-12" which we'd like to order in a nice way
+        lspThreads.sort((lthread, rthread) -> {
+            final var l = lthread.getName().toLowerCase();
+            final var r = rthread.getName().toLowerCase();
+
+            final var ml = threadNamePrefixAndDigitSuffix.matcher(l);
+            final var mr = threadNamePrefixAndDigitSuffix.matcher(r);
+
+            // "Thread-Foo-1"
+            // "Thread-Foo-12"
+            // they share a prefix, so ok compare by integer suffix
+            if (ml.matches() && mr.matches() && ml.group(1).equals(mr.group(1))) {
+                try  {
+                    final var intl = Integer.parseInt(ml.group(2));
+                    final var intr = Integer.parseInt(mr.group(2));
+                    return intl < intr ? -1 : intl == intr ? 0 : 1;
+                }
+                catch (NumberFormatException e) {
+                    // discard, but shouldn't happen
+                }
+            }
+
+            return l.compareTo(r);
+        });
 
         var response = new ThreadsResponse();
         response.setThreads(lspThreads.toArray(new org.eclipse.lsp4j.debug.Thread[lspThreads.size()]));
