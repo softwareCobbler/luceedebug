@@ -9,7 +9,10 @@ import lucee.runtime.type.Collection;
 import lucee.runtime.type.Collection.Key;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import luceedebug.*;
 
@@ -37,7 +40,8 @@ public class DebugFrame implements IDebugFrame {
     public int getLine() { return line; }
     public void setLine(int line) { this.line = line; }
 
-    private HashMap<String, CfEntityRef> scopes = new HashMap<>();
+    // we want to preserve insertion order here
+    private HashMap<String, CfEntityRef> scopes = new LinkedHashMap<>();
 
     public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext) {
         this(sourceFilePath, depth, valTracker, refTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
@@ -68,10 +72,30 @@ public class DebugFrame implements IDebugFrame {
         return frameName;
     }
 
+    interface SupplierOrNull<T> {
+        T get() throws Throwable;
+    }
+
+    private <T> T getOr(SupplierOrNull<T> f) {
+        try {
+            return f.get();
+        }
+        catch(Throwable e) {
+            return null;
+        }
+    }
+
     private void pushScopes(PageContext pageContext) {
-        maybePushScope("variables", pageContext.variablesScope());
+        // push in alphabetical order, they won't be sorted later
+        maybePushScope("application", getOr(() -> pageContext.applicationScope()));
         maybePushScope("arguments", pageContext.argumentsScope());
+        maybePushScope("form", pageContext.formScope());
         maybePushScope("local", pageContext.localScope());
+        maybePushScope("request", pageContext.requestScope());
+        maybePushScope("session", getOr(() -> pageContext.sessionScope()));
+        maybePushScope("server", getOr(() -> pageContext.serverScope()));
+        maybePushScope("url", pageContext.urlScope());
+        maybePushScope("variables", pageContext.variablesScope());
     }
 
     private void maybePushScope(String name, Scope scope) {

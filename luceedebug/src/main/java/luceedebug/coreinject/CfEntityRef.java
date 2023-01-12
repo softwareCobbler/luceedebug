@@ -136,6 +136,9 @@ class CfEntityRef {
         else if (cfEntity instanceof Boolean) {
             val.value = cfEntity.toString();
         }
+        else if (cfEntity instanceof java.util.Date) {
+            val.value = cfEntity.toString();
+        }
         else if (cfEntity instanceof Array) {
             CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
             owned_keepAlive.add(objRef);
