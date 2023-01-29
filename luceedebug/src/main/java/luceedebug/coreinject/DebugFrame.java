@@ -11,6 +11,7 @@ import lucee.runtime.type.Collection.Key;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -22,16 +23,12 @@ public class DebugFrame implements IDebugFrame {
     private ValTracker valTracker;
     private RefTracker<CfEntityRef> refTracker;
 
-    /** native accesses */
+    final private Scopes rawScopesRef_;
     final private String sourceFilePath;
-    /** native accesses */
     final private long id;
-    /** native accesses */
     final private String name;
-    /** native accesses */
     final private int depth; // 0 is first frame in stack, 1 is next, ...
-    /** native accesses */
-    private int line = 0; // unknown until notified by native
+    private int line = 0; // initially unknown, until first step notification
 
     public String getSourceFilePath() { return sourceFilePath; };
     public long getId() { return id; }
@@ -40,21 +37,66 @@ public class DebugFrame implements IDebugFrame {
     public int getLine() { return line; }
     public void setLine(int line) { this.line = line; }
 
-    // we want to preserve insertion order here
-    private HashMap<String, CfEntityRef> scopes = new LinkedHashMap<>();
+    // lazy initialized on request for scopes
+    // This is "scopes, wrapped with trackable IDs, which are expensive to create and cleanup"
+    private LinkedHashMap<String, CfEntityRef> scopes_ = null;
+
+    // hold strong refs to scopes, because PageContext will swap them out as frames change (variables, local, this)
+    // (application, server and etc. maybe could be held as globals)
+    // We don't want to construct tracked refs to them until a debugger asks for them, because it is expensive
+    // to create and clean up references for every pushed frame, especially if that frame isn't ever inspected in a debugger.
+    // This should be valid for the entirety of the frame, and should the frame should be always be disposed of at the end of the actual cf frame.
+    static class Scopes {
+        final lucee.runtime.type.scope.Scope application;
+        final lucee.runtime.type.scope.Scope arguments;
+        final lucee.runtime.type.scope.Scope form;
+        final lucee.runtime.type.scope.Scope local;
+        final lucee.runtime.type.scope.Scope request;
+        final lucee.runtime.type.scope.Scope session;
+        final lucee.runtime.type.scope.Scope server;
+        final lucee.runtime.type.scope.Scope url;
+        final lucee.runtime.type.scope.Scope variables;
+
+        Scopes(PageContext pageContext) {
+            this.application = getOr(() -> pageContext.applicationScope());
+            this.arguments   = getOr(() -> pageContext.argumentsScope());
+            this.form        = getOr(() -> pageContext.formScope());
+            this.local       = getOr(() -> pageContext.localScope());
+            this.request     = getOr(() -> pageContext.requestScope());
+            this.session     = getOr(() -> pageContext.sessionScope());
+            this.server      = getOr(() -> pageContext.serverScope());
+            this.url         = getOr(() -> pageContext.urlScope());
+            this.variables   = getOr(() -> pageContext.variablesScope());
+        }
+
+        interface SupplierOrNull<T> {
+            T get() throws Throwable;
+        }
+
+        // some scope getters throw; if we can't get a scope for some reason, we should investigate,
+        // but we can keep running, just with less information (can't see that scope in the debugger)
+        private <T> T getOr(SupplierOrNull<T> f) {
+            try {
+                return f.get();
+            }
+            catch(Throwable e) {
+                return null;
+            }
+        }
+    }
 
     public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext) {
         this(sourceFilePath, depth, valTracker, refTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
     }
 
     public DebugFrame(String sourceFilePath, int depth, ValTracker varTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext, String name) {
+        this.rawScopesRef_ = new Scopes(pageContext);
         this.sourceFilePath = sourceFilePath;
         this.valTracker = varTracker;
         this.refTracker = refTracker;
         this.id = nextId.incrementAndGet();
         this.name = name;
         this.depth = depth;
-        pushScopes(pageContext);
     }
 
     private static String tryGetFrameName(PageContext pageContext) {
@@ -72,44 +114,37 @@ public class DebugFrame implements IDebugFrame {
         return frameName;
     }
 
-    interface SupplierOrNull<T> {
-        T get() throws Throwable;
-    }
-
-    private <T> T getOr(SupplierOrNull<T> f) {
-        try {
-            return f.get();
-        }
-        catch(Throwable e) {
-            return null;
+    private void putScopeRefIfNonNull(String name, lucee.runtime.type.scope.Scope scope) {
+        if (scope != null) {
+            scopes_.put(name, CfEntityRef.freshRef(valTracker, refTracker, name, scope));
         }
     }
 
-    private void pushScopes(PageContext pageContext) {
-        // push in alphabetical order, they won't be sorted later
-        maybePushScope("application", getOr(() -> pageContext.applicationScope()));
-        maybePushScope("arguments", pageContext.argumentsScope());
-        maybePushScope("form", pageContext.formScope());
-        maybePushScope("local", pageContext.localScope());
-        maybePushScope("request", pageContext.requestScope());
-        maybePushScope("session", getOr(() -> pageContext.sessionScope()));
-        maybePushScope("server", getOr(() -> pageContext.serverScope()));
-        maybePushScope("url", pageContext.urlScope());
-        maybePushScope("variables", pageContext.variablesScope());
-    }
-
-    private void maybePushScope(String name, Scope scope) {
-        if (scope == null || scope instanceof LocalNotSupportedScope) {
+    private void lazyInitScopeRefs() {
+        if (scopes_ != null) {
+            // already init'd
             return;
         }
 
-        scopes.put(name, CfEntityRef.freshRef(valTracker, refTracker, name, scope));
+        scopes_ = new LinkedHashMap<>();
+        putScopeRefIfNonNull("application", rawScopesRef_.application);
+        putScopeRefIfNonNull("arguments", rawScopesRef_.arguments);
+        putScopeRefIfNonNull("form", rawScopesRef_.form);
+        putScopeRefIfNonNull("local", rawScopesRef_.local);
+        putScopeRefIfNonNull("request", rawScopesRef_.request);
+        putScopeRefIfNonNull("session", rawScopesRef_.session);
+        putScopeRefIfNonNull("server", rawScopesRef_.server);
+        putScopeRefIfNonNull("url", rawScopesRef_.url);
+        putScopeRefIfNonNull("variables", rawScopesRef_.variables);
     }
 
+
+
     public IDebugEntity[] getScopes() {
-        IDebugEntity[] result = new DebugEntity[scopes.size()];
+        lazyInitScopeRefs();
+        IDebugEntity[] result = new DebugEntity[scopes_.size()];
         int i = 0;
-        for (CfEntityRef entityRef : scopes.values()) {
+        for (CfEntityRef entityRef : scopes_.values()) {
             var entity = new DebugEntity();
             entity.name = entityRef.name;
             entity.namedVariables = entityRef.getNamedVariablesCount();
