@@ -58,26 +58,30 @@ public class DebugFrame implements IDebugFrame {
         final lucee.runtime.type.scope.Scope variables;
 
         Scopes(PageContext pageContext) {
-            this.application = getOr(() -> pageContext.applicationScope());
-            this.arguments   = getOr(() -> pageContext.argumentsScope());
-            this.form        = getOr(() -> pageContext.formScope());
-            this.local       = getOr(() -> pageContext.localScope());
-            this.request     = getOr(() -> pageContext.requestScope());
-            this.session     = getOr(() -> pageContext.sessionScope());
-            this.server      = getOr(() -> pageContext.serverScope());
-            this.url         = getOr(() -> pageContext.urlScope());
-            this.variables   = getOr(() -> pageContext.variablesScope());
+            this.application = getScopeOr(() -> pageContext.applicationScope());
+            this.arguments   = getScopeOr(() -> pageContext.argumentsScope());
+            this.form        = getScopeOr(() -> pageContext.formScope());
+            this.local       = getScopeOr(() -> pageContext.localScope());
+            this.request     = getScopeOr(() -> pageContext.requestScope());
+            this.session     = getScopeOr(() -> pageContext.sessionScope());
+            this.server      = getScopeOr(() -> pageContext.serverScope());
+            this.url         = getScopeOr(() -> pageContext.urlScope());
+            this.variables   = getScopeOr(() -> pageContext.variablesScope());
         }
 
         interface SupplierOrNull<T> {
             T get() throws Throwable;
         }
 
-        // some scope getters throw; if we can't get a scope for some reason, we should investigate,
+        // some scope getters throw or return garbage scopes; if we can't get a scope for some reason, we should investigate,
         // but we can keep running, just with less information (can't see that scope in the debugger)
-        private <T> T getOr(SupplierOrNull<T> f) {
+        private <T> T getScopeOr(SupplierOrNull<T> f) {
             try {
-                return f.get();
+                final var v = f.get();
+                if (v instanceof LocalNotSupportedScope) {
+                    return null;
+                }
+                return v;
             }
             catch(Throwable e) {
                 return null;
