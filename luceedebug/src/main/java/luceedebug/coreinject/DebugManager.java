@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Stack;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -274,7 +273,7 @@ public class DebugManager implements IDebugManager {
 
     private final Cleaner cleaner = Cleaner.create();
 
-    private final ConcurrentMap<Thread, Stack<DebugFrame>> cfStackByThread = new MapMaker()
+    private final ConcurrentMap<Thread, ArrayList<DebugFrame>> cfStackByThread = new MapMaker()
         .concurrencyLevel(/* default as per docs */ 4)
         .weakKeys()
         .makeMap();
@@ -327,7 +326,7 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
-        Stack<DebugFrame> stack = cfStackByThread.get(thread);
+        ArrayList<DebugFrame> stack = cfStackByThread.get(thread);
         if (stack == null) {
             System.out.println("getCfStack called, frames was null, frames is " + cfStackByThread + ", passed thread was " + thread);
             System.out.println("                   thread=" + thread + " this=" + this);
@@ -495,11 +494,11 @@ public class DebugManager implements IDebugManager {
     }
 
     private DebugFrame getTopmostFrame(Thread thread) {
-        Stack<DebugFrame> stack = cfStackByThread.get(thread);
-        if (stack == null) {
+        ArrayList<DebugFrame> stack = cfStackByThread.get(thread);
+        if (stack == null || stack.size() == 0) {
             return null;
         }
-        return stack.lastElement();
+        return stack.get(stack.size() - 1);
     }
 
     /**
@@ -510,12 +509,12 @@ public class DebugManager implements IDebugManager {
     public void pushCfFrame(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
         Thread currentThread = Thread.currentThread();
 
-        Stack<DebugFrame> stack = cfStackByThread.get(currentThread);
+        ArrayList<DebugFrame> stack = cfStackByThread.get(currentThread);
 
         // The null case means "fresh stack", this is the first frame
         // Frame length shouldn't ever be zero, we should tear it down when it hits zero
         if (stack == null || stack.size() == 0) {
-            Stack<DebugFrame> list = new Stack<>();
+            ArrayList<DebugFrame> list = new ArrayList<>();
             cfStackByThread.put(currentThread, list);
             stack = list;
 
@@ -525,7 +524,7 @@ public class DebugManager implements IDebugManager {
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
         final DebugFrame frame = new DebugFrame(sourceFilePath, depth, valTracker, refTracker, pageContext);
 
-        stack.push(frame);
+        stack.add(frame);
 
         // if (stepRequestByThread.containsKey(currentThread)) {
         //     System.out.println("pushed frame during active step request:");
@@ -537,7 +536,7 @@ public class DebugManager implements IDebugManager {
 
     public void popCfFrame() {
         Thread currentThread = Thread.currentThread();
-        Stack<DebugFrame> maybeNull_frameListing = cfStackByThread.get(currentThread);
+        ArrayList<DebugFrame> maybeNull_frameListing = cfStackByThread.get(currentThread);
 
         if (maybeNull_frameListing == null) {
             // error case, maybe throw
@@ -546,7 +545,7 @@ public class DebugManager implements IDebugManager {
         }
 
         if (maybeNull_frameListing.size() > 0) {
-            DebugFrame frame = maybeNull_frameListing.pop();
+            DebugFrame frame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
             frameTracker.remove(frame.getId());
 
             // if (stepRequestByThread.containsKey(currentThread)) {
