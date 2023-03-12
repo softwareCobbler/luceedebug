@@ -188,7 +188,7 @@ In this example:
 ### Misc.
 #### writedump / serializeJSON
 
-`writeDump(x)` and `serializeJSON(x)` data visualizations are made availabe as context menu items from within the debug variables pane. Right-clicking on a variable brings up the menu:
+`writeDump(x)` and `serializeJSON(x)` data visualizations are made available as context menu items from within the debug variables pane. Right-clicking on a variable brings up the menu:
 
 ![misc. features of a debug session indicating that luceedebug is a step debugger for Lucee.](assets/dumpvar-context-menu.png)
 
