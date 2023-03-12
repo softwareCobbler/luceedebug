@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	interface DumpResponse {
-		htmlDocument: string
+		content: string
 	}
 
 	const webviewPanelByUri : {[uri: string]: vscode.WebviewPanel} = {}
@@ -80,8 +80,31 @@ export function activate(context: vscode.ExtensionContext) {
 			// need a timeout? or does this cb get wrapped in a timeout by whoever we're passing it to 
 			const result : DumpResponse = await currentDebugSession?.customRequest("dump", {variablesReference: args.variable.variablesReference});
 			const uri = vscode.Uri.from({scheme: "luceedebug", path: args.variable.name, fragment: args.variable.variablesReference.toString()});
-			const html = result.htmlDocument;
+			const html = result.content;
 			updateOrCreateWebview(uri, html);
+		}),
+		vscode.commands.registerCommand("luceedebug.dumpAsJSON", async (args?: Partial<DebugPaneContextMenuArgs>) => {
+			if (!currentDebugSession || args?.variable === undefined || args.variable.variablesReference === 0) {
+				return;
+			}
+			
+			const result : DumpResponse = await currentDebugSession.customRequest("dumpAsJSON", {variablesReference: args.variable.variablesReference});
+			
+			let obj : any;
+			try {
+				obj = JSON.parse(result.content);
+			}
+			catch {
+				obj = "Failed to parse the following JSON:\n" + result.content;
+			}
+
+			const uri = vscode.Uri.from({scheme: "luceedebug", path: args.variable.name, fragment: args.variable.variablesReference.toString()});
+			const text = JSON.stringify(obj, undefined, 4);
+
+			luceedebugTextDocumentProvider.addOrReplaceTextDoc(uri, text);
+			
+			const doc = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(doc);
 		})
 	);
 

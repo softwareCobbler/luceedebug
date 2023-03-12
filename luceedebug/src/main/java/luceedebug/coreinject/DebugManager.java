@@ -23,7 +23,11 @@ import java.net.SocketException;
 import lucee.runtime.PageContext;
 import luceedebug.DapServer;
 import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
+
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
+
+import javax.servlet.ServletException;
 
 import luceedebug.*;
 
@@ -105,22 +109,99 @@ public class DebugManager implements IDebugManager {
     // Caller does have "all the suspended threads", but not all of them may have an associated page context.
     // So we can iterate until we find one with an associated page context
     synchronized public String doDump(ArrayList<Thread> suspendedThreads, int variableID) {
-        // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
-        // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
-        // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
-        // presumably all complex values have a ref + a variable? One too many layers of indirection?
-        final var ref = refTracker.maybeGetFromId(variableID);
-        if (ref == null) {
-            return "couldn't find variable (ref!) having ID " + variableID;
+        final var pageContext = maybeNull_findPageContext(suspendedThreads);
+        if (pageContext == null) {
+            var msgBuilder = new StringBuilder();
+            suspendedThreads.forEach(thread -> msgBuilder.append("<div>" + thread + "</div>"));
+            return "<div>couldn't get a page context, iterated over threads:</div>" + msgBuilder.toString();
         }
 
-        // paranoid null handling here, nothing should actually be null
-        final var someDumpable = ref.wrapped == null
-            ? null
+        final var entity = findEntity(variableID);
+        if (entity.isError()) {
+            return "<div>" + entity.err + "</div>";
+        }
+
+        return doDump(pageContext, entity.ok);
+    }
+
+    synchronized public String doDumpAsJSON(ArrayList<Thread> suspendedThreads, int variableID) {
+        final var pageContext = maybeNull_findPageContext(suspendedThreads);
+        if (pageContext == null) {
+            return "\"couldn't find a page context to do work on\"";
+        }
+
+        final var entity = findEntity(variableID);
+        if (entity.isError()) {
+            return "\"" + entity.err.replace("\"", "\\\"") + "\"";
+        }
+
+        return doDumpAsJSON(pageContext, entity.ok);
+    }
+
+    static class Result<OK_t, Err_t> {
+        enum OkOrError { ok, error };
+        final OkOrError okOrError;
+        final OK_t ok;
+        final Err_t err;
+        private Result(OkOrError okOrError, OK_t ok, Err_t err) {
+            if (okOrError == OkOrError.ok) {
+                this.okOrError = okOrError;
+                this.ok = ok;
+                this.err = null;
+            }
+            else if (okOrError == OkOrError.error) {
+                this.okOrError = okOrError;
+                this.ok = null;
+                this.err = err;
+            }
+            else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+        }
+        
+        public static <L,R> Result<L,R> OK(L v) {
+            return new Result<>(OkOrError.ok, v, null);
+        }
+
+        public static <L,R> Result<L,R> Err(R v) {
+            return new Result<>(OkOrError.ok, null, v);
+        }
+
+        public boolean isOK() {
+            return okOrError == OkOrError.ok;
+        }
+
+        public boolean isError() {
+            return okOrError == OkOrError.error;
+        }
+    }
+
+    // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
+    // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
+    // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
+    // presumably all complex values have a ref + a variable? One too many layers of indirection?
+    synchronized private Result<Object, String> findEntity(int variableID) {
+        final var ref = refTracker.maybeGetFromId(variableID);
+        if (ref == null) {
+            return Result.Err("Lookup of ref having ID " + variableID + " found nothing.");
+        }
+
+        // paranoid null handling here, the target entity at the leaf could legitimately be null though,
+        // as in some actual null value like `{someValue: null}`
+        final var entity = ref.wrapped == null
+            ? null // shouldn't happen
             : ref.wrapped.cfEntity == null
-            ? null
+            ? null // shouldn't happen
             : ref.wrapped.cfEntity.wrapped;
 
+        return Result.OK(entity);
+    }
+    
+    /**
+     * synchronized might be unnecessary here
+     */
+    synchronized private lucee.runtime.PageContext maybeNull_findPageContext(ArrayList<Thread> suspendedThreads) {
         final var pageContextRef = ((Supplier<WeakReference<PageContext>>) () -> {
             for (var thread : suspendedThreads) {
                 var pageContextRef_ = pageContextByThread.get(thread);
@@ -130,16 +211,38 @@ public class DebugManager implements IDebugManager {
             }
             return null;
         }).get();
-        final var pageContext = pageContextRef == null ? null : pageContextRef.get();
+        return pageContextRef == null ? null : pageContextRef.get();
+    }
 
-        if (pageContextRef == null || pageContext == null) {
-            var msgBuilder = new StringBuilder();
-            suspendedThreads.forEach(thread -> msgBuilder.append("<div>" + thread + "</div>"));
-            return "<div>couldn't get a page context, iterated over threads:</div>" + msgBuilder.toString();
+    public static class PageContextAndOutputStream {
+        public final PageContext pageContext;
+        public final ByteArrayOutputStream outStream;
+        public PageContextAndOutputStream(PageContext pageContext, ByteArrayOutputStream outStream) {
+            this.pageContext = pageContext;
+            this.outStream = outStream;
         }
 
-        // someDumpable could be null, but that should still dump as some kind of visualization of null
-        return doDump(pageContext, someDumpable);
+        // is there a way to conjure up a new PageContext without having some other page context?
+        public static PageContextAndOutputStream ephemeralPageContextFromOther(PageContext pc) throws ServletException {
+            final var outputStream = new ByteArrayOutputStream();
+            PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
+                /*Config config*/ pc.getConfig(),
+                /*ServletConfig servletConfig*/ pc.getServletConfig(),
+                /*File contextRoot*/ new File("."),
+                /*String host*/ "",
+                /*String scriptName*/ "",
+                /*String queryString*/ "",
+                /*Cookie[] cookies*/ new javax.servlet.http.Cookie[] {},
+                /*Map<String, Object> headers*/ new HashMap<>(),
+                /*Map<String, String> parameters*/ new HashMap<>(),
+                /*Map<String, Object> attributes*/ new HashMap<>(),
+                /*OutputStream os*/ outputStream,
+                /*boolean register*/ false,
+                /*long timeout*/ 99999, // seconds?
+                /*boolean ignoreScopes*/ true
+            );
+            return new PageContextAndOutputStream(freshEphemeralPageContext, outputStream);
+        }
     }
 
     // this is "single threaded" for now, only a single dumpable thing is tracked at once,
@@ -148,46 +251,12 @@ public class DebugManager implements IDebugManager {
         final var result = new Object(){ String value = "if this text is present, something went wrong when calling writeDump(...)"; };
         final var thread = new Thread(() -> {
             try {
-                final var outputStream = new ByteArrayOutputStream();
-                PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
-                    /*Config config*/ pageContext.getConfig(),
-                    /*ServletConfig servletConfig*/ pageContext.getServletConfig(),
-                    /*File contextRoot*/ new File("."),
-                    /*String host*/ "",
-                    /*String scriptName*/ "",
-                    /*String queryString*/ "",
-                    /*Cookie[] cookies*/ new javax.servlet.http.Cookie[] {},
-                    /*Map<String, Object> headers*/ new HashMap<>(),
-                    /*Map<String, String> parameters*/ new HashMap<>(),
-                    /*Map<String, Object> attributes*/ new HashMap<>(),
-                    /*OutputStream os*/ outputStream,
-                    /*boolean register*/ false,
-                    /*long timeout*/ 99999, // seconds?
-                    /*boolean ignoreScopes*/ true
-                );
+                final var ephemeralContext = PageContextAndOutputStream.ephemeralPageContextFromOther(pageContext);
+                final var freshEphemeralPageContext = ephemeralContext.pageContext;
+                final var outputStream = ephemeralContext.outStream;
 
                 lucee.runtime.engine.ThreadLocalPageContext.register(freshEphemeralPageContext);
                 
-                //
-                // this works, but it doesn't seem it's what Lucee actually does anymore.
-                // Instaed, it calls out to some cf-lib function.
-                //
-                //lucee.runtime.functions.other.Dump.call(pageContextWorker, someDumpable);
-                //return lucee.runtime.functions.other.Dump.call(pc, object, null, true, 9999, null, null, null, null, 9999, true, true);
-                // lucee.runtime.functions.other.Dump.call(
-                //     /*PageContext pc*/ pageContextWorker,
-                //     /*Object object*/ someDumpable,
-                //     /*String label*/ null,
-                //     /*boolean expand*/ true,
-                //     /*double maxLevel*/ 9999,
-                //     /*String show*/ null,
-                //     /*String hide*/ null,
-                //     /*String output*/ "browser",
-                //     /*String format*/ null,
-                //     /*double keys*/ 9999,
-                //     /*boolean metainfo*/ true,
-                //     /*boolean showUDFs*/ true
-                // );
                 lucee.runtime.functions.system.CFFunction.call(
                     freshEphemeralPageContext, new Object[]{
                         lucee.runtime.type.FunctionValueImpl.newInstance(lucee.runtime.type.util.KeyConstants.___filename, "writeDump.cfm"),
@@ -200,19 +269,68 @@ public class DebugManager implements IDebugManager {
 
                 freshEphemeralPageContext.flush();
                 result.value = wrapDumpInHtmlDoc(new String(outputStream.toByteArray(), "UTF-8"));
-                // String xxx = new String(outputStream.toByteArray(), "UTF-8");
-                // System.out.println(xxx);
 
                 lucee.runtime.util.PageContextUtil.releasePageContext(
                     /*PageContext pc*/ freshEphemeralPageContext,
                     /*boolean register*/ true
                 );
+
                 outputStream.close();
 
                 lucee.runtime.engine.ThreadLocalPageContext.release();
             }
             catch (Throwable e) {
-                System.out.println("[luceedebug] exception in pushDump will be discarded. trace follows:");
+                e.printStackTrace();
+                System.exit(1);
+            }
+        });
+
+        thread.start();
+
+        try {
+            // needs to be on its own thread for PageContext reasons
+            // but we still want to do this synchronously
+            thread.join();
+        }
+        catch (Throwable e) {
+            if (thread.isAlive()) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+            else {
+                // thread is joined, discard exception
+            }
+        }
+
+        return result.value;
+    }
+
+    synchronized private String doDumpAsJSON(PageContext pageContext, Object someDumpable) {
+        final var result = new Object(){ String value = "\"Something went wrong when calling serializeJSON(...)\""; };
+        final var thread = new Thread(() -> {
+            try {
+                final var ephemeralContext = PageContextAndOutputStream.ephemeralPageContextFromOther(pageContext);
+                final var freshEphemeralPageContext = ephemeralContext.pageContext;
+                final var outputStream = ephemeralContext.outStream;
+
+                lucee.runtime.engine.ThreadLocalPageContext.register(freshEphemeralPageContext);
+                
+                result.value = (String)lucee.runtime.functions.conversion.SerializeJSON.call(
+                    /*PageContext pc*/ freshEphemeralPageContext,
+                    /*Object var*/ someDumpable,
+                    /*Object queryFormat*/"struct"
+                );
+
+                lucee.runtime.util.PageContextUtil.releasePageContext(
+                    /*PageContext pc*/ freshEphemeralPageContext,
+                    /*boolean register*/ true
+                );
+
+                outputStream.close();
+
+                lucee.runtime.engine.ThreadLocalPageContext.release();
+            }
+            catch (Throwable e) {
                 e.printStackTrace();
                 System.exit(1);
             }

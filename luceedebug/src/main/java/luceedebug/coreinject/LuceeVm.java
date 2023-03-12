@@ -898,24 +898,20 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public String dump(int dapVariablesReference) {
-        // presumably, the requester is requesting to dump a variable because they
-        // have at least one suspended thread they're investigating. We should have that thread,
-        // or at least one suspended thread. It doesn't matter which thread we use, we just
-        // need there to be an associated PageContext, so we can get its:
-        //   - Config
-        //   - ServletConfig
-        // If we can figure out how to get those from some singleton somewhere then we wouldn't need
-        // to do any thread lookup here.
-        if (suspendedThreads.size() == 0) {
-            return "<div>couldn't dump variable having variableId " + dapVariablesReference + "</div>";
-        }
-
-        //
-        // There's no guarantee that a suspended thread is associated with a PageContext,
-        // so we need to pass a list of all suspended threads, and the manager can use that
-        // to find a PageContext.
-        //
+    // presumably, the requester is requesting to dump a variable because they
+    // have at least one suspended thread they're investigating. We should have that thread,
+    // or at least one suspended thread. It doesn't matter which thread we use, we just
+    // need there to be an associated PageContext, so we can get its:
+    //   - Config
+    //   - ServletConfig
+    // If we can figure out how to get those from some singleton somewhere then we wouldn't need
+    // to do any thread lookup here.
+    //
+    // There's no guarantee that a suspended thread is associated with a PageContext,
+    // so we need to pass a list of all suspended threads, and the manager can use that
+    // to find a PageContext.
+    //
+    private ArrayList<Thread> getSuspendedThreadListForDumpWorker() {
         final var suspendedThreadsList = new ArrayList<Thread>();
         suspendedThreads.iterator().forEachRemaining(jdwpThreadID -> {
             var thread = threadMap_.getThreadByJdwpId(jdwpThreadID);
@@ -923,7 +919,15 @@ public class LuceeVm implements ILuceeVm {
                 suspendedThreadsList.add(thread);
             }
         });
-        return GlobalIDebugManagerHolder.debugManager.doDump(suspendedThreadsList, dapVariablesReference);
+        return suspendedThreadsList;
+    }
+
+    public String dump(int dapVariablesReference) {
+        return GlobalIDebugManagerHolder.debugManager.doDump(getSuspendedThreadListForDumpWorker(), dapVariablesReference);
+    }
+
+    public String dumpAsJSON(int dapVariablesReference) {
+        return GlobalIDebugManagerHolder.debugManager.doDumpAsJSON(getSuspendedThreadListForDumpWorker(), dapVariablesReference);
     }
 
     public String[] getTrackedCanonicalFileNames() {

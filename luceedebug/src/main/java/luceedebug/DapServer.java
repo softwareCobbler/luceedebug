@@ -453,19 +453,19 @@ public class DapServer implements IDebugProtocolServer {
     }
 
     class DumpResponse {
-        private String htmlDocument;
-        public String getHtmlDocument() {
-            return htmlDocument;
+        private String content;
+        public String getContent() {
+            return content;
         }
-        public void setHtmlDocument(final String htmlDocument) {
-            this.htmlDocument = htmlDocument;
+        public void setContent(final String htmlDocument) {
+            this.content = htmlDocument;
         }
         
         @Override
         @Pure
         public String toString() {
           ToStringBuilder b = new ToStringBuilder(this);
-          b.add("htmlDocument", this.htmlDocument);
+          b.add("content", this.content);
           return b.toString();
         }
 
@@ -482,7 +482,7 @@ public class DapServer implements IDebugProtocolServer {
                 return false;
             }
             DumpResponse other = (DumpResponse) obj;
-            if (!this.htmlDocument.equals(other.htmlDocument)) {
+            if (!this.content.equals(other.content)) {
                 return false;
             }
             return true;
@@ -492,7 +492,14 @@ public class DapServer implements IDebugProtocolServer {
     @JsonRequest
 	CompletableFuture<DumpResponse> dump(DumpArguments args) {
         final var response = new DumpResponse();
-        response.setHtmlDocument(luceeVm_.dump(args.variablesReference));
+        response.setContent(luceeVm_.dump(args.variablesReference));
+        return CompletableFuture.completedFuture(response);
+	}
+
+    @JsonRequest
+	CompletableFuture<DumpResponse> dumpAsJSON(DumpArguments args) {
+        final var response = new DumpResponse();
+        response.setContent(luceeVm_.dumpAsJSON(args.variablesReference));
         return CompletableFuture.completedFuture(response);
 	}
 

@@ -25,6 +25,7 @@ public interface IDebugManager {
     public void registerCfStepHandler(CfStepCallback cb);
 
     public String doDump(ArrayList<Thread> suspendedThreads, int variableID);
+    public String doDumpAsJSON(ArrayList<Thread> suspendedThreads, int variableID);
 
     /**
      * @return String, or null if there is no path for the target ref

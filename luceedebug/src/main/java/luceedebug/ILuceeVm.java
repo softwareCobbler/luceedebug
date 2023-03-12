@@ -46,6 +46,7 @@ public interface ILuceeVm {
     public void clearAllBreakpoints();
 
     public String dump(int dapVariablesReference);
+    public String dumpAsJSON(int dapVariablesReference);
 
     public String[] getTrackedCanonicalFileNames();
     /**

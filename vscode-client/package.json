@@ -42,6 +42,10 @@
         },
         {
           "when": "debugType == 'cfml'",
+          "command": "luceedebug.dumpAsJSON"
+        },
+        {
+          "when": "debugType == 'cfml'",
           "command": "luceedebug.openFileForVariableSourcePath"
         }
       ]
@@ -63,6 +67,11 @@
       {
         "command": "luceedebug.dump",
         "title": "luceedebug: dump",
+        "enablement": "debugType == 'cfml'"
+      },
+      {
+        "command": "luceedebug.dumpAsJSON",
+        "title": "luceedebug: dump as JSON",
         "enablement": "debugType == 'cfml'"
       },
       {
