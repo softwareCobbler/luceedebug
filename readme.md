@@ -183,3 +183,13 @@ In this example:
 
 * A breakpoint set on `/Users/sc/projects/app/Application.cfc` will match the last transform and map to `/var/www/Application.cfc` on the server.
 * A breakpoint set on `/Users/sc/projects/subapp_b_helper/HelpUtil.cfc` will match the first transform and map to `/var/www/subapp/b/helper/HelpUtil.cfc` on the server.
+
+---
+### Misc.
+#### writedump / serializeJSON
+
+`writeDump(x)` and `serializeJSON(x)` data visualizations are made availabe as context menu items from within the debug variables pane. Right-clicking on a variable brings up the menu:
+
+![misc. features of a debug session indicating that luceedebug is a step debugger for Lucee.](assets/dumpvar-context-menu.png)
+
+and results are placed into an editor tab.
