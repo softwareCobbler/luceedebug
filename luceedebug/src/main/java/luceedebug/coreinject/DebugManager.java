@@ -64,10 +64,6 @@ public class DebugManager implements IDebugManager {
             System.out.println("[luceedebug] jdwp self connect OK");
             DapServer.createForSocket(luceeVm, config, debugHost, debugPort);
         }, threadName).start();
-
-        // new Thread(() -> {
-        //     spawnLocalHttpDumpServer();
-        // }, "luceedebug-dump-worker").start();
     }
 
     static private AttachingConnector getConnector() {
@@ -97,35 +93,6 @@ public class DebugManager implements IDebugManager {
             return null;
         }
     }
-
-    //static String lastDumpedThing = "nothing here";
-
-    // private static void spawnLocalHttpDumpServer() {
-    //     try {
-    //         var server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("localhost", 10001), 0);
-    //         server.createContext("/", new com.sun.net.httpserver.HttpHandler() {
-    //             public void handle(com.sun.net.httpserver.HttpExchange h) throws IOException {
-    //                 final var headers = h.getResponseHeaders();
-    //                 final var body = h.getResponseBody();
-    //                 headers.add("Connection", "close");
-    //                 headers.add("Content-Type", "text/html; charset=utf-8");
-
-    //                 // the icon link is intended to prevent favicon requests
-    //                 final String xbody = "<!DOCTYPE html><html><head><link rel='icon' href='data:,'></head><body>" + lastDumpedThing + "</body></html>";
-    //                 final byte[] bodyBytes = xbody.getBytes("UTF-8");
-
-    //                 h.sendResponseHeaders(200, bodyBytes.length);
-    //                 body.write(bodyBytes);
-    //                 body.close();
-    //             }
-    //         });
-    //         server.start();
-    //     }
-    //     catch (Throwable e) {
-    //         e.printStackTrace();
-    //         System.exit(1);
-    //     }
-    // }
 
     private String wrapDumpInHtmlDoc(String s) {
         return "<!DOCTYPE html><html><body>" + s + "</body></html>";
@@ -409,22 +376,6 @@ public class DebugManager implements IDebugManager {
         stepRequestByThread.remove(thread);
     }
 
-    /**
-     * The amount of code between `notifyStep` and returning to the caller must be kept at a minimum
-     * Every bytecode instruction between `notifyStep` and returning to
-     * the next instruction in the object represented by `stepOccuredInThisInstance` is a jdwp event that we will need to handle
-     * 
-     * The instance we're stepping in must be the first object reached of that class type between this java frame and the instance we're stepping in
-     * This is pretty trivial to guarantee -- the JVM stack should look something like
-     * 
-     * step (xdebugger) <-- current JVM frame
-     * step (PageContextImpl)
-     * step (PageContext) (note: abstract, probably not on stack)
-     * {call, udfCall} (stepping object) <-- pop back here is the actual step we're interested in
-     * 
-     * We would use `stepOccuredInThisInstance` rather than `stepOccuredInThisKlass`,
-     * but we don't get notified of the "current this instance identity" in a jdwp step event, only the "curent class"
-     */
     public void step(int distanceToActualFrame, int lineNumber) {
         long start = System.nanoTime();
         Thread currentThread = Thread.currentThread();
