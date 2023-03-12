@@ -923,7 +923,7 @@ public class LuceeVm implements ILuceeVm {
                 suspendedThreadsList.add(thread);
             }
         });
-        return GlobalIDebugManagerHolder.debugManager.pushDump(suspendedThreadsList, dapVariablesReference);
+        return GlobalIDebugManagerHolder.debugManager.doDump(suspendedThreadsList, dapVariablesReference);
     }
 
     public String[] getTrackedCanonicalFileNames() {

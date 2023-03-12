@@ -104,7 +104,7 @@ public class DebugManager implements IDebugManager {
     // We need to know which thread is suspended, but caller doesn't have that info, just a variableID.
     // Caller does have "all the suspended threads", but not all of them may have an associated page context.
     // So we can iterate until we find one with an associated page context
-    synchronized public String pushDump(ArrayList<Thread> suspendedThreads, int variableID) {
+    synchronized public String doDump(ArrayList<Thread> suspendedThreads, int variableID) {
         // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
         // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
         // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
@@ -139,12 +139,12 @@ public class DebugManager implements IDebugManager {
         }
 
         // someDumpable could be null, but that should still dump as some kind of visualization of null
-        return pushDump(pageContext, someDumpable);
+        return doDump(pageContext, someDumpable);
     }
 
     // this is "single threaded" for now, only a single dumpable thing is tracked at once,
     // pushing another dump overwrites the old dump.
-    synchronized private String pushDump(PageContext pageContext, Object someDumpable) {
+    synchronized private String doDump(PageContext pageContext, Object someDumpable) {
         final var result = new Object(){ String value = "if this text is present, something went wrong when calling writeDump(...)"; };
         final var thread = new Thread(() -> {
             try {
