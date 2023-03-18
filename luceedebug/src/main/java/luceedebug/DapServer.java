@@ -35,6 +35,7 @@ public class DapServer implements IDebugProtocolServer {
 
     // for dev, system.out was fine, in some containers, others totally suppress it and it doesn't even 
     // end up in log files.
+    // this is all jacked up, on runwar builds it spits out two lines per call to `logger.info(...)` message, the first one being [ERROR] which is not right
     private static final Logger logger = Logger.getLogger("luceedebug");
     
     /**
@@ -129,24 +130,24 @@ public class DapServer implements IDebugProtocolServer {
             var addr = new InetSocketAddress(host, port);
             server.setReuseAddress(true);
 
-            logger.info("binding cf dap server socket on " + host + ":" + port);
+            logger.finest("binding cf dap server socket on " + host + ":" + port);
 
             server.bind(addr);
 
-            logger.info("dap server socket bind OK");
+            logger.finest("dap server socket bind OK");
 
             while (true) {
-                logger.info("listening for inbound debugger connection on " + host + ":" + port + "...");
+                logger.finest("listening for inbound debugger connection on " + host + ":" + port + "...");
 
                 var socket = server.accept();
 
-                logger.info("accepted debugger connection");
+                logger.finest("accepted debugger connection");
 
                 var dapEntry = create(luceeVm, config, socket.getInputStream(), socket.getOutputStream());
                 var future = dapEntry.launcher.startListening();
                 future.get(); // block until the connection closes
 
-                logger.info("debugger connection closed");
+                logger.finest("debugger connection closed");
             }
         }
         catch (Throwable e) {
@@ -217,12 +218,12 @@ public class DapServer implements IDebugProtocolServer {
         clientProxy_.initialized();
 
         if (pathTransforms.size() == 0) {
-            logger.info("attached to frontend, using path transforms <none>");
+            logger.finest("attached to frontend, using path transforms <none>");
         }
         else {
-            logger.info("attached to frontend, using path transforms:");
+            logger.finest("attached to frontend, using path transforms:");
             for (var transform : pathTransforms) {
-                logger.info(transform.asTraceString());
+                logger.finest(transform.asTraceString());
             }
         }
 
@@ -345,7 +346,7 @@ public class DapServer implements IDebugProtocolServer {
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
         final var path = new OriginalAndTransformedString(args.getSource().getPath(), applyPathTransformsIdeToCf(args.getSource().getPath()));
-        logger.info("bp for " + path.original + " -> " + path.transformed);
+        logger.finest("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
         for (int i = 0; i < size; ++i) {
