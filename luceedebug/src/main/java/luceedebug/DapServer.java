@@ -230,10 +230,21 @@ public class DapServer implements IDebugProtocolServer {
         var lspThreads = new ArrayList<org.eclipse.lsp4j.debug.Thread>();
 
         for (var threadRef : luceeVm_.getThreadListing()) {
-            var lspThread = new org.eclipse.lsp4j.debug.Thread();
-            lspThread.setId((int)threadRef.uniqueID());
-            lspThread.setName(threadRef.name());
-            lspThreads.add(lspThread);
+            try {
+                var lspThread = new org.eclipse.lsp4j.debug.Thread();
+                lspThread.setId((int)threadRef.uniqueID()); // <<<<----------------@fixme, ObjectCollectedExceptions here
+                lspThread.setName(threadRef.name()); // <<<<----------------@fixme, ObjectCollectedExceptions here
+                lspThreads.add(lspThread);
+            }
+            catch (ObjectCollectedException e) {
+                // Discard this exception.
+                // We really shouldn't be dealing in terms of jdi thread refs here.
+                // The luceevm should return a list of names and IDs rather than actual threadrefs.
+            }
+            catch (Throwable e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
         }
         
         // a lot of thread names like "Thread-Foo-1" and "Thread-Foo-12" which we'd like to order in a nice way
