@@ -519,6 +519,7 @@ public class DapServer implements IDebugProtocolServer {
         private String[] canonicalFilenames;
         /** [original, transformed][] */
         private String[][] breakpoints;
+        private String[] pathTransforms;
 
         public String[] getCanonicalFilenames() {
             return canonicalFilenames;
@@ -533,6 +534,13 @@ public class DapServer implements IDebugProtocolServer {
         public void setBreakpoints(final String[][] v) {
             this.breakpoints = v;
         }
+
+        public String[] getPathTransforms() {
+            return pathTransforms;
+        }
+        public void setPathTransforms(String[] v) {
+            this.pathTransforms = v;
+        }
         
         @Override
         @Pure
@@ -540,6 +548,7 @@ public class DapServer implements IDebugProtocolServer {
             ToStringBuilder b = new ToStringBuilder(this);
             b.add("canonicalFilenames", this.canonicalFilenames);
             b.add("breakpoints", this.breakpoints);
+            b.add("pathTransforms", this.pathTransforms);
             return b.toString();
         }
 
@@ -576,6 +585,15 @@ public class DapServer implements IDebugProtocolServer {
                 return false;
             }
 
+            if (this.pathTransforms == null) {
+                if (other.pathTransforms != null) {
+                    return false;
+                }
+            }
+            else if (!Arrays.deepEquals(this.pathTransforms, other.pathTransforms)) {
+                return false;
+            }
+
             return true;
         }
     }
@@ -589,6 +607,13 @@ public class DapServer implements IDebugProtocolServer {
         final var response = new DebugBreakpointBindingsResponse();
         response.setCanonicalFilenames(luceeVm_.getTrackedCanonicalFileNames());
         response.setBreakpoints(luceeVm_.getBreakpointDetail());
+        
+        var transforms = new ArrayList<String>();
+        for (var v : this.pathTransforms) {
+            transforms.add(v.asTraceString());
+        }
+        response.setPathTransforms(transforms.toArray(new String[0]));
+
         return CompletableFuture.completedFuture(response);
 	}
 

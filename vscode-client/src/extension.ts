@@ -135,7 +135,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("luceedebug.debugBreakpointBindings", async () => {
 			interface DebugBreakpointBindingsResponse {
 				canonicalFilenames: string[],
-				breakpoints: [string, string][]
+				breakpoints: [string, string][],
+				pathTransforms: string[],
 			}
 			const data : DebugBreakpointBindingsResponse = await currentDebugSession?.customRequest("debugBreakpointBindings");
 			
@@ -145,6 +146,8 @@ export function activate(context: vscode.ExtensionContext) {
 					.breakpoints
 					.sort(([l_idePath],[r_idePath]) => l_idePath < r_idePath ? -1 : 1)
 					.map(([idePath, serverPath]) => `  (ide)    ${idePath}\n  (server) ${serverPath}`).join("\n\n")
+				+ "\n\nPath transforms:\n"
+				+ (data.pathTransforms.length === 0 ? "<<none>>" : data.pathTransforms.map(v => `  ${v}`).join("\n"))
 				+ "\n\nFiles luceedebug knows about (all filenames are as the server sees them, and match against breakpoint 'server' paths):\n"
 				+ data.canonicalFilenames.sort().map(s => `  ${s}`).join("\n");
 			
