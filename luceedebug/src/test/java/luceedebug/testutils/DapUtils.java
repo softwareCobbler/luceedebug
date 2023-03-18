@@ -1,14 +1,11 @@
 package luceedebug.testutils;
 
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import org.eclipse.lsp4j.debug.*;
-import org.eclipse.lsp4j.debug.SourceBreakpoint;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 
@@ -78,6 +75,18 @@ public class DapUtils {
 
     public static CompletableFuture<Void> disconnect(IDebugProtocolServer dapServer) {
         return dapServer.disconnect(new DisconnectArguments());
+    }
+
+    public static CompletableFuture<Void> stepIn(IDebugProtocolServer dapServer, int threadID) {
+        var args = new StepInArguments();
+        args.setThreadId(threadID);
+        return dapServer.stepIn(args);
+    }
+
+    public static CompletableFuture<Void> stepOut(IDebugProtocolServer dapServer, int threadID) {
+        var args = new StepOutArguments();
+        args.setThreadId(threadID);
+        return dapServer.stepOut(args);
     }
 
     public static class MockClient implements IDebugProtocolClient {
