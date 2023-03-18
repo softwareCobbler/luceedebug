@@ -35,6 +35,8 @@ gradlew.bat shadowjar
 
 ### Install and Configure Agent
 
+Note that you must be running a JDK version of your java release (a common error on startup when running "just" a JRE is `java.lang.NoClassDefFoundError: com/sun/jdi/Bootstrap`).
+
 Add the following to your java invocation. (Tomcat users can use the `setenv.sh` file for this purpose.)
 
 ```
