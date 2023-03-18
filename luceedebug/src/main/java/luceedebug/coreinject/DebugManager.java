@@ -618,7 +618,14 @@ public class DebugManager implements IDebugManager {
         if (maybeNull_frameListing.size() > 0) {
             DebugFrame frame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
             frameTracker.remove(frame.getId());
+        }
 
+        if (maybeNull_frameListing.size() == 0) {
+            // we popped the last frame, so we destroy the whole stack
+            cfStackByThread.remove(currentThread);
+            pageContextByThread.remove(currentThread);
+        }
+        else {
             var maybeNull_stepRequest = stepRequestByThread.get(currentThread);
             if ( maybeNull_stepRequest != null ) {
                 // When we pop a frame, check if there's a step request (of any kind, in/out/over).
@@ -631,10 +638,14 @@ public class DebugManager implements IDebugManager {
                 // it might be good for us to just call "step()" here, but we'd need to pass a little more info into popCfFrame via instrumentation,
                 // which perf wise isn't too bad but would excacerbate the instrumentation-code-size problem (MethodCodeTooLarge exceptions).
                 
-                //
-                // this needs additional scrutiny
-                //
-
+                maybeNotifyOfStepCompletion(
+                    currentThread,
+                    getTopmostFrame(currentThread),
+                    maybeNull_stepRequest,
+                    /* hardcoded, to assume "current depth to target frame is 1" */ 2,
+                    System.nanoTime()    
+                );
+                // maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
                 // clearStepRequest(currentThread);
                 // notifyStep(currentThread, /* hardcoded, to assume "current depth to target frame is 1" */ 2);
             }
@@ -643,12 +654,6 @@ public class DebugManager implements IDebugManager {
             //     System.out.println("popped frame during active step request:");
             //     System.out.println("  " + frame.sourceFilePath + ":" + frame.line);
             // }
-        }
-
-        if (maybeNull_frameListing.size() == 0) {
-            // we popped the last frame, so we destroy the whole stack
-            cfStackByThread.remove(currentThread);
-            pageContextByThread.remove(currentThread);
         }
     }
 

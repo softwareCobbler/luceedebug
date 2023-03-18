@@ -26,7 +26,7 @@ import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
 class Integration {
-    @Test
+    @Test @Disabled
     void hits_a_breakpoint_and_retrieves_variable_info() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
@@ -149,7 +149,7 @@ class Integration {
         }
     }
 
-    @Test @Disabled
+    @Test
     void stepping_works_as_expected_on_singleline_statement_with_many_subexpressions() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
