@@ -630,8 +630,13 @@ public class DebugManager implements IDebugManager {
                 //
                 // it might be good for us to just call "step()" here, but we'd need to pass a little more info into popCfFrame via instrumentation,
                 // which perf wise isn't too bad but would excacerbate the instrumentation-code-size problem (MethodCodeTooLarge exceptions).
-                clearStepRequest(currentThread);
-                notifyStep(currentThread, /* hardcoded, to assume "current depth to target frame is 1" */ 2);
+                
+                //
+                // this needs additional scrutiny
+                //
+
+                // clearStepRequest(currentThread);
+                // notifyStep(currentThread, /* hardcoded, to assume "current depth to target frame is 1" */ 2);
             }
 
             // if (stepRequestByThread.containsKey(currentThread)) {

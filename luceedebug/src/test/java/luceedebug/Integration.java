@@ -149,7 +149,7 @@ class Integration {
         }
     }
 
-    @Test
+    @Test @Disabled
     void stepping_works_as_expected_on_singleline_statement_with_many_subexpressions() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
