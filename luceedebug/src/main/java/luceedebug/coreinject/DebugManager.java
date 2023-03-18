@@ -578,6 +578,10 @@ public class DebugManager implements IDebugManager {
      * each caller bumps it until we get here
      */
     public void pushCfFrame(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
+        pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
+    }
+    
+    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
         Thread currentThread = Thread.currentThread();
 
         ArrayList<DebugFrame> stack = cfStackByThread.get(currentThread);
@@ -603,6 +607,14 @@ public class DebugManager implements IDebugManager {
         // }
 
         frameTracker.put(frame.getId(), frame);
+
+        return frame;
+    }
+
+    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
+        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
+        frame.isFunctionDefaultValueInitializationFrame = true;
+        java.util.logging.Logger.getLogger("luceedebug").info("pushd default value frame from line " + frame.getLine());
     }
 
     public void popCfFrame() {
@@ -615,9 +627,11 @@ public class DebugManager implements IDebugManager {
             return;
         }
 
+        DebugFrame poppedFrame = null;
+
         if (maybeNull_frameListing.size() > 0) {
-            DebugFrame frame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
-            frameTracker.remove(frame.getId());
+            poppedFrame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
+            frameTracker.remove(poppedFrame);
         }
 
         if (maybeNull_frameListing.size() == 0) {
@@ -626,34 +640,35 @@ public class DebugManager implements IDebugManager {
             pageContextByThread.remove(currentThread);
         }
         else {
-            var maybeNull_stepRequest = stepRequestByThread.get(currentThread);
-            if ( maybeNull_stepRequest != null ) {
-                // When we pop a frame, check if there's a step request (of any kind, in/out/over).
-                // Popping frames doesn't issue step requests, so we otherwise wouldn't observe this event.
-                // e.g. in `foo(1).foo(2).foo(3)`
-                // after stepping into foo(1), stepping out would (without this check) run until the next step event,
-                // which (probably? usually? generally) would occur inside of foo(2), but we want to see the ide jump back
-                // to the foo.foo.foo line before entering foo(2)
-                //
-                // it might be good for us to just call "step()" here, but we'd need to pass a little more info into popCfFrame via instrumentation,
-                // which perf wise isn't too bad but would excacerbate the instrumentation-code-size problem (MethodCodeTooLarge exceptions).
-                
-                maybeNotifyOfStepCompletion(
-                    currentThread,
-                    getTopmostFrame(currentThread),
-                    maybeNull_stepRequest,
-                    /* hardcoded, to assume "current depth to target frame is 1" */ 2,
-                    System.nanoTime()    
-                );
-                // maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
-                // clearStepRequest(currentThread);
-                // notifyStep(currentThread, /* hardcoded, to assume "current depth to target frame is 1" */ 2);
-            }
+            //
+            // When we pop a frame, check if there's a step request (of any kind, in/out/over).
+            // Popping frames doesn't issue step requests, so we otherwise wouldn't observe this event.
+            // e.g. in `foo(1).foo(2).foo(3)`
+            // after stepping into foo(1), stepping out would (without this check) run until the next step event,
+            // which (probably? usually? generally) would occur inside of foo(2), but we want to see the ide jump back
+            // to the foo.foo.foo line before entering foo(2)
+            //
+            if (poppedFrame != null) {
+                var stepRequest = stepRequestByThread.get(currentThread);
+                if ( stepRequest != null ) {
+                    //
+                    // If we're in a "udfDefaultValue" frame, considering a pop to be a step is weird behavior, after ever default value initialization you step out to the caller and then back,
+                    // like `function foo(a = 1, b = 2, c = 3) {...}`, that's three pops but we should just ignore them.
+                    // unless the user explicitly stepped out, then that pops out to the line doing the current function call, and a step in will descend into the body.
+                    // arguably we'd want "step out of default value init" to jump directly into the function body.
+                    //
+                    if (!poppedFrame.isFunctionDefaultValueInitializationFrame || stepRequest.type == CfStepRequest.STEP_OUT) {
+                        maybeNotifyOfStepCompletion(
+                            currentThread,
+                            getTopmostFrame(currentThread),
+                            stepRequest,
+                            /* hardcoded, to assume "current depth to target frame is 1" */ 2,
+                            System.nanoTime()    
+                        );
+                    }
 
-            // if (stepRequestByThread.containsKey(currentThread)) {
-            //     System.out.println("popped frame during active step request:");
-            //     System.out.println("  " + frame.sourceFilePath + ":" + frame.line);
-            // }
+                }
+            }
         }
     }
 
