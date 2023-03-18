@@ -1,0 +1,19 @@
+version: '3.6'
+
+# this is done programmatically from the tests, we might not need it
+
+services:
+  lucee:
+    #command: ls /bind-mount
+    #image: lucee/lucee:5.3.10.120-tomcat9.0-jdk11-openjdk-2303
+    image: luceedebug
+    container_name: luceedebug
+    ports:
+      - 8888:8888
+    volumes:
+      - type: bind
+        source: ../../luceedebug/build/libs/
+        target: /build/
+      - type: bind
+        source: ./app1
+        target: /var/www/

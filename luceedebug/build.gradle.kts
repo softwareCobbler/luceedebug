@@ -23,6 +23,15 @@ repositories {
 dependencies {
     // Use JUnit Jupiter for testing.
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.2")
+    // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-core
+    testImplementation("com.github.docker-java:docker-java-core:3.3.0")
+    // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-transport-httpclient5
+    testImplementation("com.github.docker-java:docker-java-transport-httpclient5:3.3.0")
+    // https://mvnrepository.com/artifact/com.google.http-client/google-http-client
+    testImplementation("com.google.http-client:google-http-client:1.43.1")
+
+
+
 
     // https://mvnrepository.com/artifact/com.google.guava/guava
     implementation("com.google.guava:guava:31.1-jre")
@@ -48,6 +57,18 @@ dependencies {
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(11))
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
+
+    //maxHeapSize = "1G"
+
+    testLogging {
+        events("passed")
+        events("failed")
+        showStandardStreams = true
     }
 }
 
