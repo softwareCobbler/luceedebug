@@ -619,6 +619,21 @@ public class DebugManager implements IDebugManager {
             DebugFrame frame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
             frameTracker.remove(frame.getId());
 
+            var maybeNull_stepRequest = stepRequestByThread.get(currentThread);
+            if ( maybeNull_stepRequest != null ) {
+                // When we pop a frame, check if there's a step request (of any kind, in/out/over).
+                // Popping frames doesn't issue step requests, so we otherwise wouldn't observe this event.
+                // e.g. in `foo(1).foo(2).foo(3)`
+                // after stepping into foo(1), stepping out would (without this check) run until the next step event,
+                // which (probably? usually? generally) would occur inside of foo(2), but we want to see the ide jump back
+                // to the foo.foo.foo line before entering foo(2)
+                //
+                // it might be good for us to just call "step()" here, but we'd need to pass a little more info into popCfFrame via instrumentation,
+                // which perf wise isn't too bad but would excacerbate the instrumentation-code-size problem (MethodCodeTooLarge exceptions).
+                clearStepRequest(currentThread);
+                notifyStep(currentThread, /* hardcoded, to assume "current depth to target frame is 1" */ 2);
+            }
+
             // if (stepRequestByThread.containsKey(currentThread)) {
             //     System.out.println("popped frame during active step request:");
             //     System.out.println("  " + frame.sourceFilePath + ":" + frame.line);
