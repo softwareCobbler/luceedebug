@@ -836,7 +836,10 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void continueAll() {
-        suspendedThreads.forEach(jdwpThreadID -> continue_(jdwpThreadID));
+        // avoid concurrent modification exceptions, calling continue_ mutates `suspendedThreads`
+        Arrays
+            .asList(suspendedThreads.toArray(size -> new Long[size]))
+            .forEach(jdwpThreadID -> continue_(jdwpThreadID));
     }
 
     public void stepIn(long jdwpThreadID) {
