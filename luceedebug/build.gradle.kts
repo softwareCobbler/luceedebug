@@ -61,6 +61,8 @@ java {
 }
 
 tasks.test {
+    dependsOn("shadowJar")
+
     useJUnitPlatform()
 
     //maxHeapSize = "1G"
