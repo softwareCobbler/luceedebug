@@ -358,14 +358,16 @@ public class DebugManager implements IDebugManager {
 
     private final Cleaner cleaner = Cleaner.create();
 
+    // MapMaker().concurrencyLevel(4).weakKeys().makeMap() ---> ~20% overhead on pushFrame/popFrame
+    // MapMaker().concurrencyLevel(4).makeMap()            ---> ~10% overhead on pushFrame/popFrame
+    // Collections.synchronizedMap(new HashMap<>());       ---> ~12% overhead on pushFrame/popFrame
     private final ConcurrentMap<Thread, ArrayList<DebugFrame>> cfStackByThread = new MapMaker()
         .concurrencyLevel(/* default as per docs */ 4)
-        .weakKeys()
         .makeMap();
     private final ConcurrentMap<Thread, WeakReference<PageContext>> pageContextByThread = new MapMaker()
         .concurrencyLevel(/* default as per docs */ 4)
-        .weakKeys()
         .makeMap();
+
     private final HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
     
     /**
