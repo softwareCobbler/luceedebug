@@ -6,11 +6,11 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import org.eclipse.lsp4j.debug.*;
@@ -22,6 +22,8 @@ import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.xtext.xbase.lib.Pure;
 import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
 
+import com.sun.jdi.ObjectCollectedException;
+
 public class DapServer implements IDebugProtocolServer {
     private final ILuceeVm luceeVm_;
     private final Config config_;
@@ -30,6 +32,10 @@ public class DapServer implements IDebugProtocolServer {
     interface TransformRunner {
         Optional<String> run(IPathTransform transform, String s);
     }
+
+    // for dev, system.out was fine, in some containers, others totally suppress it and it doesn't even 
+    // end up in log files.
+    private static final Logger logger = Logger.getLogger("luceedebug");
     
     /**
      * runs all the transforms until one matches and produces a result
@@ -123,24 +129,24 @@ public class DapServer implements IDebugProtocolServer {
             var addr = new InetSocketAddress(host, port);
             server.setReuseAddress(true);
 
-            System.out.println("[luceedebug] binding cf dap server socket on " + host + ":" + port);
+            logger.info("binding cf dap server socket on " + host + ":" + port);
 
             server.bind(addr);
 
-            System.out.println("[luceedebug] dap server socket bind OK");
+            logger.info("dap server socket bind OK");
 
             while (true) {
-                System.out.println("[luceedebug] listening for inbound debugger connection on " + host + ":" + port + "...");
+                logger.info("listening for inbound debugger connection on " + host + ":" + port + "...");
 
                 var socket = server.accept();
 
-                System.out.println("[luceedebug] accepted debugger connection");
+                logger.info("accepted debugger connection");
 
                 var dapEntry = create(luceeVm, config, socket.getInputStream(), socket.getOutputStream());
                 var future = dapEntry.launcher.startListening();
                 future.get(); // block until the connection closes
 
-                System.out.println("[luceedebug] debugger connection closed");
+                logger.info("debugger connection closed");
             }
         }
         catch (Throwable e) {
@@ -211,12 +217,12 @@ public class DapServer implements IDebugProtocolServer {
         clientProxy_.initialized();
 
         if (pathTransforms.size() == 0) {
-            System.out.println("[luceedebug] attached to frontend, using path transforms <none>");
+            logger.info("attached to frontend, using path transforms <none>");
         }
         else {
-            System.out.println("[luceedebug] attached to frontend, using path transforms:");
+            logger.info("attached to frontend, using path transforms:");
             for (var transform : pathTransforms) {
-                System.out.println(transform.asTraceString());
+                logger.info(transform.asTraceString());
             }
         }
 
@@ -339,7 +345,7 @@ public class DapServer implements IDebugProtocolServer {
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
         final var path = new OriginalAndTransformedString(args.getSource().getPath(), applyPathTransformsIdeToCf(args.getSource().getPath()));
-        System.out.println("bp for " + path.original + " -> " + path.transformed);
+        logger.info("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
         for (int i = 0; i < size; ++i) {

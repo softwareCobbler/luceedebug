@@ -1,6 +1,7 @@
 version: '3.6'
 
 # this is done programmatically from the tests, we might not need it
+# or maybe we should read this and build the docker container from java with this def
 
 services:
   lucee:
@@ -10,10 +11,11 @@ services:
     container_name: luceedebug
     ports:
       - 8888:8888
+      - 10000:10000
     volumes:
       - type: bind
         source: ../../luceedebug/build/libs/
         target: /build/
       - type: bind
-        source: ./app1
+        source: ./
         target: /var/www/
