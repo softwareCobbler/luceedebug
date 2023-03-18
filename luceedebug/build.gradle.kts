@@ -65,7 +65,11 @@ tasks.test {
 
     useJUnitPlatform()
 
-    //maxHeapSize = "1G"
+    // maxHeapSize = "1G" // infinite, don't care
+
+    // We want parallelism, but we first need to have some kind of port number manager.
+    // Spinning up docker containers seems easy enough but they all have to have unique ports.
+    maxParallelForks = 1
 
     testLogging {
         events("passed")

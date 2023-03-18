@@ -89,6 +89,12 @@ public class DapUtils {
         return dapServer.stepOut(args);
     }
 
+    public static CompletableFuture<Void> stepOver(IDebugProtocolServer dapServer, int threadID) {
+        var args = new NextArguments();
+        args.setThreadId(threadID);
+        return dapServer.next(args);
+    }
+
     public static class MockClient implements IDebugProtocolClient {
         public void breakpoint(BreakpointEventArguments args) {
 

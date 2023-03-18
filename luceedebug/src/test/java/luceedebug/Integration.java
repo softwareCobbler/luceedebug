@@ -26,7 +26,7 @@ import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
 class Integration {
-    @Test @Disabled
+    @Test
     void hits_a_breakpoint_and_retrieves_variable_info() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
@@ -213,12 +213,35 @@ class Integration {
             .get(1000, TimeUnit.MILLISECONDS)
             .getThreadId();
 
+            //
+            // ^N is "^" points at expected column (though we don't get column info) and "N" is frame number
+            // ^1 is at top of stack, ^2 is the frame below it, ...
+            //
+
+            {
+                // foo(n) { ... }
+                //     
+                // foo(1).foo(2).foo(3).foo(4);
+                //     ^1
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(1, frames.length);
+                assertEquals("??", frames[0].getName());
+                assertEquals(6, frames[0].getLine());
+            }
+
             doWithStoppedEventFuture(
                 dapClient,
                 () -> DapUtils.stepIn(dapServer, threadID).join()
             ).get(1000, TimeUnit.MILLISECONDS);
 
             {
+                // foo(n) { ... }
+                //     ^1
+                // foo(1).foo(2).foo(3).foo(4);
+                //     ^2
                 final var frames = DapUtils
                     .getStackTrace(dapServer, threadID)
                     .join()
@@ -234,6 +257,10 @@ class Integration {
             ).get(1000, TimeUnit.MILLISECONDS);
 
             {
+                // foo(n) { ... }
+                //
+                // foo(1).foo(2).foo(3).foo(4);
+                //     ^1 (out-but-not-yet-stepped)
                 final var frames = DapUtils
                     .getStackTrace(dapServer, threadID)
                     .join()
@@ -241,6 +268,102 @@ class Integration {
                 assertEquals(1, frames.length);
                 assertEquals("??", frames[0].getName());
                 assertEquals(6, frames[0].getLine());
+            }
+
+            doWithStoppedEventFuture(
+                dapClient,
+                () -> DapUtils.stepIn(dapServer, threadID).join()
+            ).get(1000, TimeUnit.MILLISECONDS);
+
+            {
+                // foo(n) { ... }
+                //     ^1
+                // foo(1).foo(2).foo(3).foo(4);
+                //            ^2
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(2, frames.length);
+                assertEquals("foo", frames[0].getName(), "'foo' instead of 'FOO', different case the second time around");
+                assertEquals(2, frames[0].getLine());
+            }
+
+            doWithStoppedEventFuture(
+                dapClient,
+                () -> DapUtils.stepOut(dapServer, threadID).join()
+            ).get(1000, TimeUnit.MILLISECONDS);
+
+            {
+                // foo(n) { ... }
+                //
+                // foo(1).foo(2).foo(3).foo(4);
+                //            ^ (out-but-not-yet-stepped)
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(1, frames.length);
+                assertEquals("??", frames[0].getName());
+                assertEquals(6, frames[0].getLine());
+            }
+
+            doWithStoppedEventFuture(
+                dapClient,
+                () -> DapUtils.stepOver(dapServer, threadID).join()
+            ).get(1000, TimeUnit.MILLISECONDS);
+
+            {
+                // foo(n) { ... }
+                //
+                // foo(1).foo(2).foo(3).foo(4);
+                //               ^1
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(1, frames.length);
+                assertEquals("??", frames[0].getName());
+                assertEquals(6, frames[0].getLine());
+            }
+
+            doWithStoppedEventFuture(
+                dapClient,
+                () -> DapUtils.stepOver(dapServer, threadID).join()
+            ).get(1000, TimeUnit.MILLISECONDS);
+
+            {
+                // foo(n) { ... }
+                //
+                // foo(1).foo(2).foo(3).foo(4);
+                //                      ^1
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(1, frames.length);
+                assertEquals("??", frames[0].getName());
+                assertEquals(6, frames[0].getLine());
+            }
+
+            doWithStoppedEventFuture(
+                dapClient,
+                () -> DapUtils.stepOver(dapServer, threadID).join()
+            ).get(1000, TimeUnit.MILLISECONDS);
+
+            {
+                // foo(n) { ... }
+                //
+                // foo(1).foo(2).foo(3).foo(4);
+                // <next line>
+                // ^1
+                final var frames = DapUtils
+                    .getStackTrace(dapServer, threadID)
+                    .join()
+                    .getStackFrames();
+                assertEquals(1, frames.length);
+                assertEquals("??", frames[0].getName());
+                assertEquals(7, frames[0].getLine());
             }
 
             DapUtils
