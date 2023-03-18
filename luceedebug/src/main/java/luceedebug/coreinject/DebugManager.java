@@ -650,22 +650,29 @@ public class DebugManager implements IDebugManager {
             if (poppedFrame != null) {
                 var stepRequest = stepRequestByThread.get(currentThread);
                 if ( stepRequest != null ) {
-                    //
-                    // If we're in a "udfDefaultValue" frame, considering a pop to be a step is weird behavior, after ever default value initialization you step out to the caller and then back,
-                    // like `function foo(a = 1, b = 2, c = 3) {...}`, that's three pops but we should just ignore them.
-                    // unless the user explicitly stepped out, then that pops out to the line doing the current function call, and a step in will descend into the body.
-                    // arguably we'd want "step out of default value init" to jump directly into the function body.
-                    //
-                    if (!poppedFrame.isFunctionDefaultValueInitializationFrame || stepRequest.type == CfStepRequest.STEP_OUT) {
-                        maybeNotifyOfStepCompletion(
-                            currentThread,
-                            getTopmostFrame(currentThread),
-                            stepRequest,
-                            /* hardcoded, to assume "current depth to target frame is 1" */ 2,
-                            System.nanoTime()    
-                        );
+                    var topMostFrame = getTopmostFrame(currentThread); // guaranteed by virtue of frameListing.size() != 0
+                    if (topMostFrame.getLine() != 0) {
+                        //
+                        // check that the frame isn't a weird useless frame by checking that it's line isn't zero;
+                        // it's not really clear why we push these onto the stack at all (basically every other frame)
+                        // note that we also do the same check when serializing frames to the frontend
+                        //
+                        if (!poppedFrame.isFunctionDefaultValueInitializationFrame || stepRequest.type == CfStepRequest.STEP_OUT) {
+                            //
+                            // If we're in a "udfDefaultValue" frame, considering a pop to be a step is weird behavior, after ever default value initialization you step out to the caller and then back,
+                            // like `function foo(a = 1, b = 2, c = 3) {...}`, that's three pops but we should just ignore them.
+                            // unless the user explicitly stepped out, then that pops out to the line doing the current function call, and a step in will descend into the body.
+                            // arguably we'd want "step out of default value init" to jump directly into the function body.
+                            //
+                            maybeNotifyOfStepCompletion(
+                                currentThread,
+                                getTopmostFrame(currentThread),
+                                stepRequest,
+                                /* hardcoded, to assume "current depth to target frame is 1" */ 2,
+                                System.nanoTime()    
+                            );
+                        }
                     }
-
                 }
             }
         }
