@@ -52,9 +52,7 @@ class Integration {
         DockerClient dockerClient = DockerClientImpl.getInstance(config, httpClient);
 
         final Path projectRoot = Paths.get("").toAbsolutePath();
-        final Path dockerTestDir = Paths.get(projectRoot.toString(), "../test/docker").normalize();
-
-        var imageID = "luceedebug";
+        final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
 
         var hostConfig = new HostConfig();
         hostConfig.setBinds(
@@ -72,6 +70,11 @@ class Integration {
             new PortBinding(new Binding(null, "10000"), new ExposedPort(10000)) // luceedebug
         );
 
+        final String imageID = dockerClient
+            .buildImageCmd(dockerTestDir.resolve("Dockerfile").toFile())
+            .start()
+            .awaitImageId();
+
         CreateContainerResponse container = dockerClient
             .createContainerCmd(imageID)
             .withHostConfig(hostConfig)
@@ -81,15 +84,7 @@ class Integration {
             )
             .exec();
 
-        System.out.println("Fresh container ID: " + container.getId());
-
-        try {
-            dockerClient.startContainerCmd(container.getId()).exec();
-        }
-        catch (Throwable e) {
-            e.printStackTrace();
-            throw e;
-        }
+        dockerClient.startContainerCmd(container.getId()).exec();
 
         try {
             HttpRequestFactory requestFactory = new NetHttpTransport().createRequestFactory();
@@ -141,9 +136,9 @@ class Integration {
                 throw e;
             }
 
-            var v = new CompletableFuture<Integer>();
+            final var threadID_future = new CompletableFuture<Integer>();
             dapClient.stopped_handler = stoppedEventArgs -> {
-                v.complete(stoppedEventArgs.getThreadId());
+                threadID_future.complete(stoppedEventArgs.getThreadId());
             };
             
             
@@ -160,7 +155,7 @@ class Integration {
 
             requestThread.start();
 
-            var threadID = v.get(2500, TimeUnit.MILLISECONDS);
+            final var threadID = threadID_future.get(2500, TimeUnit.MILLISECONDS);
 
             var stackTraceArgs = new StackTraceArguments();
             stackTraceArgs.setThreadId(threadID);
@@ -204,6 +199,8 @@ class Integration {
         }
         finally {
             dockerClient.stopContainerCmd(container.getId()).exec();
+            dockerClient.removeContainerCmd(container.getId()).exec();
+            dockerClient.removeImageCmd(imageID).exec();
         }
     }
 
