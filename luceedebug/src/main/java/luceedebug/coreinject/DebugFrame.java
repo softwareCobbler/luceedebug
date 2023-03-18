@@ -29,6 +29,12 @@ public class DebugFrame implements IDebugFrame {
     final private String name;
     final private int depth; // 0 is first frame in stack, 1 is next, ...
     private int line = 0; // initially unknown, until first step notification
+    
+    /**
+     * True if this cf frame's actual java method is "udfDefaultValue", see lucee source
+     * This should be final and init'd via constructor but it's not a pressing issue.
+     */
+    public boolean isFunctionDefaultValueInitializationFrame = false;
 
     public String getSourceFilePath() { return sourceFilePath; };
     public long getId() { return id; }
