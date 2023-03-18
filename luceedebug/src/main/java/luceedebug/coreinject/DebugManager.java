@@ -614,7 +614,6 @@ public class DebugManager implements IDebugManager {
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
         DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
         frame.isFunctionDefaultValueInitializationFrame = true;
-        java.util.logging.Logger.getLogger("luceedebug").info("pushd default value frame from line " + frame.getLine());
     }
 
     public void popCfFrame() {
