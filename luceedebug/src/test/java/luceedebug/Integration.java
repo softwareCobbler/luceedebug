@@ -644,6 +644,12 @@ class Integration {
                 DapUtils.evaluate(dapServer, frameID, "isNull(arguments.n)").join().getResult(),
                 "evaluation result as expected"
             );
+
+            assertEquals(
+                "\"1,2,3\"",
+                DapUtils.evaluate(dapServer, frameID, "arrayToList([1,2,3], \",\")").join().getResult(),
+                "evaluation result as expected"
+            );
             
             DapUtils.continue_(dapServer, threadID);
             

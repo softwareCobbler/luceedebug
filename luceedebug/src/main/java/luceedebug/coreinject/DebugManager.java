@@ -327,7 +327,7 @@ public class DebugManager implements IDebugManager {
                 return Either.Right("null");
             }
             else if (obj instanceof String) {
-                return Either.Right(((String)obj).replaceAll("\"", "\\"));
+                return Either.Right("\"" + ((String)obj).replaceAll("\"", "\\\"") + "\"");
             }
             else if (obj instanceof Number || obj instanceof Boolean) {
                 return Either.Right(obj.toString());
