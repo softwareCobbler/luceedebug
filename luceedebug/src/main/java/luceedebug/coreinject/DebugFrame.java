@@ -8,6 +8,7 @@ import lucee.runtime.type.scope.Scope;
 import lucee.runtime.type.Collection;
 import lucee.runtime.type.Collection.Key;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,7 +24,7 @@ public class DebugFrame implements IDebugFrame {
     private ValTracker valTracker;
     private RefTracker<CfEntityRef> refTracker;
 
-    final private Scopes rawScopesRef_;
+    final private FrameContext frameContext_;
     final private String sourceFilePath;
     final private long id;
     final private String name;
@@ -47,23 +48,39 @@ public class DebugFrame implements IDebugFrame {
     // This is "scopes, wrapped with trackable IDs, which are expensive to create and cleanup"
     private LinkedHashMap<String, CfEntityRef> scopes_ = null;
 
+    // the results of evaluating complex expressions need to be kept alive for the entirety of the frame
+    // these should be made gc'able when this frame is collected
+    // We might want to place these results somewhere that is kept alive for the whole request?
+    private ArrayList<CfEntityRef> refsToKeepAlive_ = new ArrayList<>();
+
     // hold strong refs to scopes, because PageContext will swap them out as frames change (variables, local, this)
     // (application, server and etc. maybe could be held as globals)
     // We don't want to construct tracked refs to them until a debugger asks for them, because it is expensive
     // to create and clean up references for every pushed frame, especially if that frame isn't ever inspected in a debugger.
     // This should be valid for the entirety of the frame, and should the frame should be always be disposed of at the end of the actual cf frame.
-    static class Scopes {
+    //
+    // lifetime: we shouldn't hold onto a frame longer than the engine holds onto the "frame"
+    // (where frame there is in air quotes because the engine doesn't track explicit frames)
+    // We want to not make this un-GC'able at the time the engine assumes it's GC'able.
+    // This should be doable by virtue of our frames being popped and released immediately before
+    // the engine is truly do with its "frame". Fallback here would be use a WeakRef<> but it doesn't
+    // seem necessary.
+    //
+    static class FrameContext {
+        final PageContext pageContext;
+
         final lucee.runtime.type.scope.Scope application;
-        final lucee.runtime.type.scope.Scope arguments;
+        final lucee.runtime.type.scope.Argument arguments;
         final lucee.runtime.type.scope.Scope form;
-        final lucee.runtime.type.scope.Scope local;
+        final lucee.runtime.type.scope.Local local;
         final lucee.runtime.type.scope.Scope request;
         final lucee.runtime.type.scope.Scope session;
         final lucee.runtime.type.scope.Scope server;
         final lucee.runtime.type.scope.Scope url;
-        final lucee.runtime.type.scope.Scope variables;
+        final lucee.runtime.type.scope.Variables variables;
 
-        Scopes(PageContext pageContext) {
+        FrameContext(PageContext pageContext) {
+            this.pageContext = pageContext;
             this.application = getScopeOr(() -> pageContext.applicationScope());
             this.arguments   = getScopeOr(() -> pageContext.argumentsScope());
             this.form        = getScopeOr(() -> pageContext.formScope());
@@ -93,6 +110,27 @@ public class DebugFrame implements IDebugFrame {
                 return null;
             }
         }
+
+        /**
+         * "real" frames are swapped-out in place inside the engine, so there's just one page context that has its 
+         * current context mutated on function enter/exit. To evaluate an expression inside of some frame context,
+         * we need to replace the page context's relevant scopes with the ones for "this" frame, perform the evaluation,
+         * and then restore everything we swapped out.
+         */
+        synchronized public void doWorkInThisFrame(Runnable f)  {
+            final var saved_argumentsScope = getScopeOr(() -> pageContext.argumentsScope());
+            final var saved_localScope = getScopeOr(() -> pageContext.localScope());
+            final var saved_variablesScope = getScopeOr(() -> pageContext.variablesScope());
+            try {
+                pageContext.setFunctionScopes(local, arguments);
+                pageContext.setVariablesScope(variables);
+                f.run();
+            }
+            finally {
+                pageContext.setVariablesScope(saved_variablesScope);
+                pageContext.setFunctionScopes(saved_localScope, saved_argumentsScope);
+            }
+        }
     }
 
     public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext) {
@@ -100,7 +138,7 @@ public class DebugFrame implements IDebugFrame {
     }
 
     public DebugFrame(String sourceFilePath, int depth, ValTracker varTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext, String name) {
-        this.rawScopesRef_ = new Scopes(pageContext);
+        this.frameContext_ = new FrameContext(pageContext);
         this.sourceFilePath = sourceFilePath;
         this.valTracker = varTracker;
         this.refTracker = refTracker;
@@ -137,19 +175,27 @@ public class DebugFrame implements IDebugFrame {
         }
 
         scopes_ = new LinkedHashMap<>();
-        putScopeRefIfNonNull("application", rawScopesRef_.application);
-        putScopeRefIfNonNull("arguments", rawScopesRef_.arguments);
-        putScopeRefIfNonNull("form", rawScopesRef_.form);
-        putScopeRefIfNonNull("local", rawScopesRef_.local);
-        putScopeRefIfNonNull("request", rawScopesRef_.request);
-        putScopeRefIfNonNull("session", rawScopesRef_.session);
-        putScopeRefIfNonNull("server", rawScopesRef_.server);
-        putScopeRefIfNonNull("url", rawScopesRef_.url);
-        putScopeRefIfNonNull("variables", rawScopesRef_.variables);
+        putScopeRefIfNonNull("application", frameContext_.application);
+        putScopeRefIfNonNull("arguments", frameContext_.arguments);
+        putScopeRefIfNonNull("form", frameContext_.form);
+        putScopeRefIfNonNull("local", frameContext_.local);
+        putScopeRefIfNonNull("request", frameContext_.request);
+        putScopeRefIfNonNull("session", frameContext_.session);
+        putScopeRefIfNonNull("server", frameContext_.server);
+        putScopeRefIfNonNull("url", frameContext_.url);
+        putScopeRefIfNonNull("variables", frameContext_.variables);
     }
 
+    /**
+     * for debugger-internal use, e.g. in watch expressions
+     */
+    public FrameContext getFrameContext() {
+        return frameContext_;
+    }
 
-
+    /**
+     * for direct DAP use
+     */
     public IDebugEntity[] getScopes() {
         lazyInitScopeRefs();
         IDebugEntity[] result = new DebugEntity[scopes_.size()];
@@ -165,5 +211,13 @@ public class DebugFrame implements IDebugFrame {
             i += 1;
         }
         return result;
+    }
+
+    CfEntityRef trackEvalResult(Object obj) {
+        // Strings, numbers, etc. should be skipped over?
+        final var ref = CfEntityRef.freshRef(valTracker, refTracker, "$eval", obj);
+        refsToKeepAlive_.add(ref);
+        java.util.logging.Logger.getLogger("luceedebug").severe("ref " + ref.getId() + " named=" + ref.getNamedVariablesCount() + " indexed=" + ref.getIndexedVariablesCount() + " type=" + ref.cfEntity.wrapped.getClass().toString());
+        return ref;
     }
 }

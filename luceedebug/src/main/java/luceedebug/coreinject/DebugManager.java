@@ -21,8 +21,8 @@ import java.net.ServerSocket;
 import java.net.SocketException;
 
 import lucee.runtime.PageContext;
-import luceedebug.DapServer;
 import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
+import lucee.runtime.exp.PageException;
 
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -117,11 +117,11 @@ public class DebugManager implements IDebugManager {
         }
 
         final var entity = findEntity(variableID);
-        if (entity.isError()) {
-            return "<div>" + entity.err + "</div>";
+        if (entity.isRight()) {
+            return "<div>" + entity.right + "</div>";
         }
 
-        return doDump(pageContext, entity.ok);
+        return doDump(pageContext, entity.left);
     }
 
     synchronized public String doDumpAsJSON(ArrayList<Thread> suspendedThreads, int variableID) {
@@ -131,60 +131,21 @@ public class DebugManager implements IDebugManager {
         }
 
         final var entity = findEntity(variableID);
-        if (entity.isError()) {
-            return "\"" + entity.err.replace("\"", "\\\"") + "\"";
+        if (entity.isRight()) {
+            return "\"" + entity.right.replace("\"", "\\\"") + "\"";
         }
 
-        return doDumpAsJSON(pageContext, entity.ok);
-    }
-
-    static class Result<OK_t, Err_t> {
-        enum OkOrError { ok, error };
-        final OkOrError okOrError;
-        final OK_t ok;
-        final Err_t err;
-        private Result(OkOrError okOrError, OK_t ok, Err_t err) {
-            if (okOrError == OkOrError.ok) {
-                this.okOrError = okOrError;
-                this.ok = ok;
-                this.err = null;
-            }
-            else if (okOrError == OkOrError.error) {
-                this.okOrError = okOrError;
-                this.ok = null;
-                this.err = err;
-            }
-            else {
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-            }
-        }
-        
-        public static <L,R> Result<L,R> OK(L v) {
-            return new Result<>(OkOrError.ok, v, null);
-        }
-
-        public static <L,R> Result<L,R> Err(R v) {
-            return new Result<>(OkOrError.ok, null, v);
-        }
-
-        public boolean isOK() {
-            return okOrError == OkOrError.ok;
-        }
-
-        public boolean isError() {
-            return okOrError == OkOrError.error;
-        }
+        return doDumpAsJSON(pageContext, entity.left);
     }
 
     // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
     // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
     // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
     // presumably all complex values have a ref + a variable? One too many layers of indirection?
-    synchronized private Result<Object, String> findEntity(int variableID) {
+    synchronized private Either<Object, String> findEntity(int variableID) {
         final var ref = refTracker.maybeGetFromId(variableID);
         if (ref == null) {
-            return Result.Err("Lookup of ref having ID " + variableID + " found nothing.");
+            return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
         }
 
         // paranoid null handling here, the target entity at the leaf could legitimately be null though,
@@ -195,7 +156,7 @@ public class DebugManager implements IDebugManager {
             ? null // shouldn't happen
             : ref.wrapped.cfEntity.wrapped;
 
-        return Result.OK(entity);
+        return Either.Left(entity);
     }
     
     /**
@@ -356,6 +317,72 @@ public class DebugManager implements IDebugManager {
         return result.value;
     }
 
+    public Either<ICfEntityRef, /*primitive, untracked literal value*/String> evaluate(Long frameID, String expr) {
+        var frame = frameByFrameID.get(frameID);
+        if (frame != null) {
+            Object obj = doEvaluate(frame, expr);
+            
+            // what about bool, Long, etc. ?...
+            if (obj == null) {
+                return Either.Right("null");
+            }
+            else if (obj instanceof String) {
+                return Either.Right(((String)obj).replaceAll("\"", "\\"));
+            }
+            else if (obj instanceof Number || obj instanceof Boolean) {
+                return Either.Right(obj.toString());
+            }
+            else {
+                return Either.Left(frame.trackEvalResult(obj));
+            }
+        }
+        else {
+            return Either.Right("\"<<no such frame>>\"");
+        }
+    }
+
+    // TODO: Either<Ok, Err>
+    synchronized private Object doEvaluate(DebugFrame frame, String expr) {
+        final var result = new Object(){ Object value = null; };
+        final var thread = new Thread(() -> {
+            try {
+                frame.getFrameContext().doWorkInThisFrame(() -> {
+                    try {
+                        result.value = lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr});
+                    }
+                    catch (Throwable e) {
+                        // need Either<L,R> to disambiguate from null / error case
+                        // null pointer exceptions
+                        result.value = null;
+                    }
+                });
+            }
+            catch (Throwable e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+        });
+
+        thread.start();
+
+        try {
+            // needs to be on its own thread for PageContext reasons
+            // but we still want to do this synchronously
+            thread.join();
+        }
+        catch (Throwable e) {
+            if (thread.isAlive()) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+            else {
+                // thread is joined, discard exception
+            }
+        }
+
+        return result.value;
+    }
+
     private final Cleaner cleaner = Cleaner.create();
 
     // MapMaker().concurrencyLevel(4).weakKeys().makeMap() ---> ~20% overhead on pushFrame/popFrame
@@ -368,7 +395,7 @@ public class DebugManager implements IDebugManager {
         .concurrencyLevel(/* default as per docs */ 4)
         .makeMap();
 
-    private final HashMap<Long, DebugFrame> frameTracker = new HashMap<>();
+    private final HashMap<Long, DebugFrame> frameByFrameID = new HashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object
@@ -396,7 +423,7 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized public IDebugEntity[] getScopesForFrame(long frameID) {
-        DebugFrame frame = frameTracker.get(frameID);
+        DebugFrame frame = frameByFrameID.get(frameID);
         //System.out.println("Get scopes for frame, frame was " + frame);
         if (frame == null) {
             return new IDebugEntity[0];
@@ -606,7 +633,7 @@ public class DebugManager implements IDebugManager {
         //     System.out.println("  " + frame.getName() + " @ " + frame.getSourceFilePath() + ":" + frame.getLine());
         // }
 
-        frameTracker.put(frame.getId(), frame);
+        frameByFrameID.put(frame.getId(), frame);
 
         return frame;
     }
@@ -630,7 +657,7 @@ public class DebugManager implements IDebugManager {
 
         if (maybeNull_frameListing.size() > 0) {
             poppedFrame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
-            frameTracker.remove(poppedFrame);
+            frameByFrameID.remove(poppedFrame);
         }
 
         if (maybeNull_frameListing.size() == 0) {

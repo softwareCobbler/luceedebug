@@ -1,5 +1,6 @@
 package luceedebug;
 
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -57,7 +59,7 @@ public class DapServer implements IDebugProtocolServer {
         return applyPathTransforms(
             s,
             (transform, path) -> transform.ideToServer(path)
-        );
+        ).replaceAll("\\\\|/", File.separator);
     }
     
     private String applyPathTransformsCfToIde(String s) {
@@ -720,4 +722,24 @@ public class DapServer implements IDebugProtocolServer {
 
         return CompletableFuture.completedFuture(response);
 	}
+
+    static private AtomicLong anonymousID = new AtomicLong();
+    public CompletableFuture<EvaluateResponse> evaluate(EvaluateArguments args) {
+        final var response = new EvaluateResponse();
+
+        if (args.getFrameId() != null) {
+            Either<ICfEntityRef, String> v = luceeVm_.evaluate(args.getFrameId(), args.getExpression());
+            if (v.isLeft()) {
+                response.setVariablesReference((int)(long)v.getLeft().getId());
+                response.setIndexedVariables(v.getLeft().getIndexedVariablesCount());
+                response.setNamedVariables(v.getLeft().getNamedVariablesCount());
+                response.setResult("(anonymous value " + anonymousID.incrementAndGet() + ")");
+            }
+            else {
+                response.setResult(v.getRight());
+            }
+        }
+
+        return CompletableFuture.completedFuture(response);
+    }    
 }

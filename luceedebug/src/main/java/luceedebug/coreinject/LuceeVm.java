@@ -958,4 +958,8 @@ public class LuceeVm implements ILuceeVm {
     public String getSourcePathForVariablesRef(int variablesRef) {
         return GlobalIDebugManagerHolder.debugManager.getSourcePathForVariablesRef(variablesRef);
     }
+
+    public Either<ICfEntityRef, String> evaluate(int frameID, String expr) {
+        return GlobalIDebugManagerHolder.debugManager.evaluate((Long)(long)frameID, expr);
+    }
 }

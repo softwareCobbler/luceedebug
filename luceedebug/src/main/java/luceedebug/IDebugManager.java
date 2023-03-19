@@ -40,4 +40,6 @@ public interface IDebugManager {
      * @return String, or null if there is no path for the target ref
      */
     public String getSourcePathForVariablesRef(int variablesRef);
+
+    public Either<ICfEntityRef, /*primitive value*/String> evaluate(Long frameID, String expr);
 }

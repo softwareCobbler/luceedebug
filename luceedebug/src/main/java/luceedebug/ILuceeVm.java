@@ -59,4 +59,6 @@ public interface ILuceeVm {
      * @return String | null
      */
     public String getSourcePathForVariablesRef(int variablesRef);
+
+    public Either<ICfEntityRef, /*primitive*/String> evaluate(int frameID, String expr);
 }

@@ -11,7 +11,7 @@ import lucee.runtime.type.Array;
 
 import luceedebug.*;
 
-class CfEntityRef {
+class CfEntityRef implements ICfEntityRef {
     final String name;
     final ValTracker.Wrapper_t cfEntity; // strong ref
 
@@ -26,7 +26,7 @@ class CfEntityRef {
     private RefTracker<CfEntityRef> global_refTracker;
     private ValTracker global_valTracker;
 
-    long getId() {
+    public long getId() {
         return id;
     }
 
@@ -185,16 +185,16 @@ class CfEntityRef {
         return val;
     }
 
-    int getNamedVariablesCount() {
-        if (cfEntity instanceof Map) {
-            return ((Map<?,?>)cfEntity).size();
+    public int getNamedVariablesCount() {
+        if (cfEntity.wrapped instanceof Map) {
+            return ((Map<?,?>)cfEntity.wrapped).size();
         }
         return 0;
     }
 
-    int getIndexedVariablesCount() {
-        if (cfEntity instanceof Array) {
-            return ((Array)cfEntity).size();
+    public int getIndexedVariablesCount() {
+        if (cfEntity.wrapped instanceof Array) {
+            return ((Array)cfEntity.wrapped).size();
         }
         return 0;
     }

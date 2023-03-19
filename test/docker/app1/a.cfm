@@ -1,7 +1,7 @@
 <cfscript>
-    function foo(n) {
-        return 0;
+    function foo(x) {
+        return n;
     }
 
-    x = foo(42);
+    writedump(foo(42))
 </cfscript>
