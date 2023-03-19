@@ -217,7 +217,6 @@ public class DebugFrame implements IDebugFrame {
         // Strings, numbers, etc. should be skipped over?
         final var ref = CfEntityRef.freshRef(valTracker, refTracker, "$eval", obj);
         refsToKeepAlive_.add(ref);
-        java.util.logging.Logger.getLogger("luceedebug").severe("ref " + ref.getId() + " named=" + ref.getNamedVariablesCount() + " indexed=" + ref.getIndexedVariablesCount() + " type=" + ref.cfEntity.wrapped.getClass().toString());
         return ref;
     }
 }

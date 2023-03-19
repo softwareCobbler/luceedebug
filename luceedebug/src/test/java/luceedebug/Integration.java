@@ -570,6 +570,94 @@ class Integration {
         }
     }
 
+    @Test
+    void evaluates_an_expression() throws Throwable {
+        final Path projectRoot = Paths.get("").toAbsolutePath();
+        final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
+
+        final DockerClient dockerClient = DockerUtils.getDefaultDockerClient();
+
+        final String imageID = DockerUtils
+            .buildOrGetImage(dockerClient, dockerTestDir.resolve("Dockerfile").toFile())
+            .getImageID();
+
+        final String containerID = DockerUtils
+            .getFreshDefaultContainer(
+                dockerClient,
+                imageID,
+                projectRoot.toFile(),
+                dockerTestDir.resolve("app1").toFile(),
+                new int[][]{
+                    new int[]{8888,8888},
+                    new int[]{10000,10000}
+                }
+            )
+            .getContainerID();
+
+        dockerClient
+            .startContainerCmd(containerID)
+            .exec();
+
+        try {
+            LuceeUtils.pollForServerIsActive("http://localhost:8888/heartbeat.cfm");
+
+            final var dapClient = new DapUtils.MockClient();
+            
+            final var socket = new Socket();
+            socket.connect(new InetSocketAddress("localhost", 10000));
+            final var launcher = DSPLauncher.createClientLauncher(dapClient, socket.getInputStream(), socket.getOutputStream());
+            launcher.startListening();
+            final var dapServer = launcher.getRemoteProxy();
+
+            DapUtils.init(dapServer).join();
+            DapUtils.attach(dapServer).join();
+
+            DapUtils
+                .setBreakpoints(dapServer, "/var/www/a.cfm", 3)
+                .join();
+
+            final var requestThreadToBeBlockedByBreakpoint = new java.lang.Thread(() -> {
+                final var requestFactory = new NetHttpTransport().createRequestFactory();
+                HttpRequest request;
+                try {
+                    request = requestFactory.buildGetRequest(new GenericUrl("http://localhost:8888/a.cfm"));
+                    request.execute().disconnect();
+                }
+                catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+
+            final var threadID = doWithStoppedEventFuture(
+                dapClient,
+                () -> requestThreadToBeBlockedByBreakpoint.start()
+            ).get(1000, TimeUnit.MILLISECONDS).getThreadId();
+
+            final var frameID = DapUtils
+                .getStackTrace(dapServer, threadID)
+                .join()
+                .getStackFrames()[0]
+                .getId();
+
+            assertEquals(
+                "false",
+                DapUtils.evaluate(dapServer, frameID, "isNull(arguments.n)").join().getResult(),
+                "evaluation result as expected"
+            );
+            
+            DapUtils.continue_(dapServer, threadID);
+            
+            requestThreadToBeBlockedByBreakpoint.join();
+
+            DapUtils.disconnect(dapServer);
+
+            //socket.close(); // how to let launcher know we want to do this?
+        }
+        finally {
+            dockerClient.stopContainerCmd(containerID).exec();
+            dockerClient.removeContainerCmd(containerID).exec();
+        }
+    }
     /**
      * This does not work recursively, and requires that exactly and only a single stop event (i.e. the target stop event)
      * be fired during the wait on the returned future.

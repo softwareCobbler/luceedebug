@@ -1,5 +1,5 @@
 <cfscript>
-    function foo(x) {
+    function foo(n) {
         return n;
     }
 
