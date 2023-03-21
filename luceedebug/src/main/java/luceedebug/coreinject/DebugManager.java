@@ -395,7 +395,7 @@ public class DebugManager implements IDebugManager {
         .concurrencyLevel(/* default as per docs */ 4)
         .makeMap();
 
-    private final HashMap<Long, DebugFrame> frameByFrameID = new HashMap<>();
+    private final ConcurrentHashMap<Long, DebugFrame> frameByFrameID = new ConcurrentHashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object
@@ -657,7 +657,7 @@ public class DebugManager implements IDebugManager {
 
         if (maybeNull_frameListing.size() > 0) {
             poppedFrame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
-            frameByFrameID.remove(poppedFrame);
+            frameByFrameID.remove(poppedFrame.getId());
         }
 
         if (maybeNull_frameListing.size() == 0) {

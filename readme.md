@@ -13,6 +13,12 @@ The java agent needs a particular invocation and needs to be run as part of the 
 
 The VS Code client extension is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
+### Try the `watch` branch
+
+Support for watch expressions and REPL evaluation.
+
+![misc. watch features being used](assets/watch.png)
+
 ## Java Agent
 
 ### Build Agent Jar
