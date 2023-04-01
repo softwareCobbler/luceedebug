@@ -13,12 +13,6 @@ The java agent needs a particular invocation and needs to be run as part of the 
 
 The VS Code client extension is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
-### Try the `watch` branch
-
-Support for watch expressions and REPL evaluation.
-
-![misc. watch features being used](assets/watch.png)
-
 ## Java Agent
 
 ### Build Agent Jar
@@ -193,11 +187,28 @@ In this example:
 * A breakpoint set on `/Users/sc/projects/subapp_b_helper/HelpUtil.cfc` will match the first transform and map to `/var/www/subapp/b/helper/HelpUtil.cfc` on the server.
 
 ---
-### Misc.
-#### writedump / serializeJSON
+## Misc.
+### writedump / serializeJSON
 
 `writeDump(x)` and `serializeJSON(x)` data visualizations are made available as context menu items from within the debug variables pane. Right-clicking on a variable brings up the menu:
 
 ![misc. features of a debug session indicating that luceedebug is a step debugger for Lucee.](assets/dumpvar-context-menu.png)
 
 and results are placed into an editor tab.
+
+---
+
+### Watch expressions
+
+Support for conditional breakpoints, watch expressions, and REPL evaluation.
+
+![misc. watch features being used](assets/watch.png)
+
+- Conditional breakpoints evaluate to "false" if they fail (aren't convertible to boolean by CF conversion rules, or throw an exception), so conditional breakpoints on something like `request.xxx`, where `request.xxx` is usually null but is sometimes set to true, is a sensible thing.
+- Footgun -- a conditional breakpoint on `x = 42` (an assignment, as opposed to the equality check `x == 42`) will assign `x` the value of `42`.
+- watch/repl/conditional expression evaluation which results in additional breakpoints being fired is undefined behavior. The most likely outcome is a deadlock.
+
+---
+
+### Debug breakpoint bindings
+If breakpoints aren't binding, you can inspect what's going using the "luceedebug: show class and breakpoint info" command. Surface this by typing "show class and breakpoint info" into the [command palette](https://code.visualstudio.com/docs/getstarted/userinterface#_command-palette).
