@@ -357,10 +357,25 @@ public class DebugManager implements IDebugManager {
     // we used to spin a thread per evaluate call; but, only in order to to register the page context with that thread, which, may not be necessary?
     private Either</*err*/String, /*ok*/Object> doEvaluate(DebugFrame frame, String expr) {
         try {
-            return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
+            return CompletableFuture
+                .supplyAsync(
+                    (Supplier<Either<String,Object>>)(() -> {
+                        System.out.println("eval on thread" + Thread.currentThread());
+                        try {
+                            lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
+                            return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
+                        }
+                        catch (PageException e) {
+                            throw new RuntimeException(e);
+                        }
+                        finally {
+                            lucee.runtime.engine.ThreadLocalPageContext.release();
+                        }
+                    })).get(5, TimeUnit.SECONDS);
         }
         catch (Throwable e) {
             // we could do better
+            e.printStackTrace();
             return Either.Left(e.getMessage());
         }
     }
