@@ -11,10 +11,14 @@ import lucee.runtime.type.Collection.Key;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import com.google.common.collect.MapMaker;
 
 import luceedebug.*;
 
@@ -79,35 +83,45 @@ public class DebugFrame implements IDebugFrame {
         final lucee.runtime.type.scope.Scope url;
         final lucee.runtime.type.scope.Variables variables;
 
+        static private final ConcurrentMap<PageContext, Object> activeFrameLockByPageContext = new MapMaker()
+            .weakKeys()
+            .makeMap();
+
         FrameContext(PageContext pageContext) {
             this.pageContext = pageContext;
-            this.application = getScopeOr(() -> pageContext.applicationScope());
-            this.arguments   = getScopeOr(() -> pageContext.argumentsScope());
-            this.form        = getScopeOr(() -> pageContext.formScope());
-            this.local       = getScopeOr(() -> pageContext.localScope());
-            this.request     = getScopeOr(() -> pageContext.requestScope());
-            this.session     = getScopeOr(() -> pageContext.sessionScope());
-            this.server      = getScopeOr(() -> pageContext.serverScope());
-            this.url         = getScopeOr(() -> pageContext.urlScope());
-            this.variables   = getScopeOr(() -> pageContext.variablesScope());
+            this.application = getScopeOrNull(() -> pageContext.applicationScope());
+            this.arguments   = getScopeOrNull(() -> pageContext.argumentsScope());
+            this.form        = getScopeOrNull(() -> pageContext.formScope());
+            this.local       = getScopeOrNull(() -> pageContext.localScope());
+            this.request     = getScopeOrNull(() -> pageContext.requestScope());
+            this.session     = getScopeOrNull(() -> pageContext.sessionScope());
+            this.server      = getScopeOrNull(() -> pageContext.serverScope());
+            this.url         = getScopeOrNull(() -> pageContext.urlScope());
+            this.variables   = getScopeOrNull(() -> pageContext.variablesScope());
         }
 
         interface SupplierOrNull<T> {
             T get() throws Throwable;
         }
 
-        // some scope getters throw or return garbage scopes; if we can't get a scope for some reason, we should investigate,
-        // but we can keep running, just with less information (can't see that scope in the debugger)
-        private <T> T getScopeOr(SupplierOrNull<T> f) {
+        // sometimes trying to get a scope throws, in which case we get null
+        // scopes that are "garbage" scopes ("LocalNotSupportedScope") should be filtered away elsewhere
+        // we especially are interested in when we swap out scopes during expression evaluation that we restore the scopes
+        // as they were prior to; which might be troublesome if "getting a scope throws so we return null, but it doesn't make sense to restore the scope to null"
+        private <T> T getScopeOrNull(SupplierOrNull<T> f) {
             try {
-                final var v = f.get();
-                if (v instanceof LocalNotSupportedScope) {
-                    return null;
-                }
-                return v;
+                return f.get();
             }
             catch(Throwable e) {
                 return null;
+            }
+        }
+
+        // if we're mutating some page context's frame information in place, we should only do it on one thread at a time.
+        static private <T> T withFrameLock(PageContext pageContext, Supplier<T> f) {
+            // lazy create the lock if it doesn't exist yet
+            synchronized(activeFrameLockByPageContext.computeIfAbsent(pageContext, (_x) -> new Object())) {
+                return f.get();
             }
         }
 
@@ -117,19 +131,21 @@ public class DebugFrame implements IDebugFrame {
          * we need to replace the page context's relevant scopes with the ones for "this" frame, perform the evaluation,
          * and then restore everything we swapped out.
          */
-        synchronized public void doWorkInThisFrame(Runnable f)  {
-            final var saved_argumentsScope = getScopeOr(() -> pageContext.argumentsScope());
-            final var saved_localScope = getScopeOr(() -> pageContext.localScope());
-            final var saved_variablesScope = getScopeOr(() -> pageContext.variablesScope());
-            try {
-                pageContext.setFunctionScopes(local, arguments);
-                pageContext.setVariablesScope(variables);
-                f.run();
-            }
-            finally {
-                pageContext.setVariablesScope(saved_variablesScope);
-                pageContext.setFunctionScopes(saved_localScope, saved_argumentsScope);
-            }
+        public <T> T doWorkInThisFrame(Supplier<T> f)  {
+            return withFrameLock(pageContext, () -> {
+                final var saved_argumentsScope = getScopeOrNull(() -> pageContext.argumentsScope());
+                final var saved_localScope = getScopeOrNull(() -> pageContext.localScope());
+                final var saved_variablesScope = getScopeOrNull(() -> pageContext.variablesScope());
+                try {
+                    pageContext.setFunctionScopes(local, arguments);
+                    pageContext.setVariablesScope(variables);
+                    return f.get();
+                }
+                finally {
+                    pageContext.setVariablesScope(saved_variablesScope);
+                    pageContext.setFunctionScopes(saved_localScope, saved_argumentsScope);
+                }
+            });
         }
     }
 
@@ -162,8 +178,9 @@ public class DebugFrame implements IDebugFrame {
         return frameName;
     }
 
-    private void putScopeRefIfNonNull(String name, lucee.runtime.type.scope.Scope scope) {
-        if (scope != null) {
+    private void checkedPutScopeRef(String name, lucee.runtime.type.scope.Scope scope) {
+
+        if (scope != null && !(scope instanceof LocalNotSupportedScope)) {
             scopes_.put(name, CfEntityRef.freshRef(valTracker, refTracker, name, scope));
         }
     }
@@ -175,15 +192,15 @@ public class DebugFrame implements IDebugFrame {
         }
 
         scopes_ = new LinkedHashMap<>();
-        putScopeRefIfNonNull("application", frameContext_.application);
-        putScopeRefIfNonNull("arguments", frameContext_.arguments);
-        putScopeRefIfNonNull("form", frameContext_.form);
-        putScopeRefIfNonNull("local", frameContext_.local);
-        putScopeRefIfNonNull("request", frameContext_.request);
-        putScopeRefIfNonNull("session", frameContext_.session);
-        putScopeRefIfNonNull("server", frameContext_.server);
-        putScopeRefIfNonNull("url", frameContext_.url);
-        putScopeRefIfNonNull("variables", frameContext_.variables);
+        checkedPutScopeRef("application", frameContext_.application);
+        checkedPutScopeRef("arguments", frameContext_.arguments);
+        checkedPutScopeRef("form", frameContext_.form);
+        checkedPutScopeRef("local", frameContext_.local);
+        checkedPutScopeRef("request", frameContext_.request);
+        checkedPutScopeRef("session", frameContext_.session);
+        checkedPutScopeRef("server", frameContext_.server);
+        checkedPutScopeRef("url", frameContext_.url);
+        checkedPutScopeRef("variables", frameContext_.variables);
     }
 
     /**

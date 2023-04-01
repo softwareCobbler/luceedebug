@@ -360,18 +360,22 @@ public class DebugManager implements IDebugManager {
             return CompletableFuture
                 .supplyAsync(
                     (Supplier<Either<String,Object>>)(() -> {
-                        System.out.println("eval on thread" + Thread.currentThread());
-                        try {
-                            lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
-                            return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
-                        }
-                        catch (PageException e) {
-                            throw new RuntimeException(e);
-                        }
-                        finally {
-                            lucee.runtime.engine.ThreadLocalPageContext.release();
-                        }
-                    })).get(5, TimeUnit.SECONDS);
+                        return frame
+                            .getFrameContext()
+                            .doWorkInThisFrame((Supplier<Either<String,Object>>)() -> {
+                                try {
+                                    lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
+                                    return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
+                                }
+                                catch (PageException e) {
+                                    throw new RuntimeException(e);
+                                }
+                                finally {
+                                    lucee.runtime.engine.ThreadLocalPageContext.release();
+                                }
+                            });
+                    })
+                ).get(5, TimeUnit.SECONDS);
         }
         catch (Throwable e) {
             // we could do better
@@ -655,7 +659,11 @@ public class DebugManager implements IDebugManager {
 
         DebugFrame poppedFrame = null;
 
-        if (maybeNull_frameListing.size() > 0) {
+        if (maybeNull_frameListing.isEmpty()) {
+            System.out.println("Popping from an empty stack?");
+            System.exit(1);
+        }
+        else {
             poppedFrame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
             frameByFrameID.remove(poppedFrame.getId());
         }
