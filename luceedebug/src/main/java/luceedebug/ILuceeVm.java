@@ -37,7 +37,7 @@ public interface ILuceeVm {
     public IDebugEntity[] getNamedVariables(long ID);
     public IDebugEntity[] getIndexedVariables(long ID);
 
-    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines);
+    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines, String[] exprs);
 
     public void continue_(long jdwpThreadID);
 

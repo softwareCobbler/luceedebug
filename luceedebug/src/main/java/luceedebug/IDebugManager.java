@@ -42,4 +42,5 @@ public interface IDebugManager {
     public String getSourcePathForVariablesRef(int variablesRef);
 
     public Either<String, Either<ICfEntityRef, /*primitive value*/String>> evaluate(Long frameID, String expr);
+    public boolean evaluateAsBooleanForConditionalBreakpoint(Thread thread, String expr);
 }

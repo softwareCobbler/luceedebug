@@ -173,7 +173,12 @@ public class DapServer implements IDebugProtocolServer {
     public CompletableFuture<Capabilities> initialize(InitializeRequestArguments args) {
         var c = new Capabilities();
         c.setSupportsConfigurationDoneRequest(true);
-        c.setSupportsSingleThreadExecutionRequests(true);
+        c.setSupportsSingleThreadExecutionRequests(true); // but, vscode does not (from the stack frame panel at least?)
+
+        c.setSupportsConditionalBreakpoints(true);
+        c.setSupportsHitConditionalBreakpoints(false); // still shows UI for it though
+        c.setSupportsLogPoints(false); // still shows UI for it though
+
         return CompletableFuture.completedFuture(c);
     }
 
@@ -362,12 +367,14 @@ public class DapServer implements IDebugProtocolServer {
         logger.finest("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
+        final String[] exprs = new String[size];
         for (int i = 0; i < size; ++i) {
             lines[i] = args.getBreakpoints()[i].getLine();
+            exprs[i] = args.getBreakpoints()[i].getCondition();
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines)) {
+        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines, exprs)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(cfBreakpoint));
         }
         

@@ -354,7 +354,6 @@ public class DebugManager implements IDebugManager {
 
     // concurrency here needs to be at the level of the DAP server?
     // does the DAP server do multiple concurrent requests ... ? ... it's all one socket so probably not ? ... well many inbound messages can be being serviced ...
-    // we used to spin a thread per evaluate call; but, only in order to to register the page context with that thread, which, may not be necessary?
     private Either</*err*/String, /*ok*/Object> doEvaluate(DebugFrame frame, String expr) {
         try {
             return CompletableFuture
@@ -367,8 +366,8 @@ public class DebugManager implements IDebugManager {
                                     lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
                                     return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
                                 }
-                                catch (PageException e) {
-                                    throw new RuntimeException(e);
+                                catch (Throwable e) {
+                                    return Either.Left(e.getMessage());
                                 }
                                 finally {
                                     lucee.runtime.engine.ThreadLocalPageContext.release();
@@ -378,9 +377,49 @@ public class DebugManager implements IDebugManager {
                 ).get(5, TimeUnit.SECONDS);
         }
         catch (Throwable e) {
-            // we could do better
-            e.printStackTrace();
             return Either.Left(e.getMessage());
+        }
+    }
+
+    public boolean evaluateAsBooleanForConditionalBreakpoint(Thread thread, String expr) {
+        var stack = cfStackByThread.get(thread);
+        if (stack == null) {
+            return false;
+        }
+        if (stack.isEmpty()) {
+            return false;
+        }
+        return doEvaluateAsBoolean(stack.get(stack.size() - 1), expr);
+    }
+
+    private boolean doEvaluateAsBoolean(DebugFrame frame, String expr) {
+        try {
+            return CompletableFuture
+                .supplyAsync(
+                    (Supplier<Boolean>)(() -> {
+                        return frame
+                            .getFrameContext()
+                            .doWorkInThisFrame((Supplier<Boolean>)() -> {
+                                try {
+                                    lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
+                                    Object obj = lucee.runtime.functions.dynamicEvaluation.Evaluate.call(
+                                        frame.getFrameContext().pageContext,
+                                        new String[]{expr}
+                                    );
+                                    return lucee.runtime.op.Caster.toBoolean(obj);
+                                }
+                                catch (PageException e) {
+                                    return false;
+                                }
+                                finally {
+                                    lucee.runtime.engine.ThreadLocalPageContext.release();
+                                }
+                            });
+                    })
+                ).get(5, TimeUnit.SECONDS);
+        }
+        catch (Throwable e) {
+            return false;
         }
     }
 
