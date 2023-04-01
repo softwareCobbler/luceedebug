@@ -331,7 +331,15 @@ public class DapServer implements IDebugProtocolServer {
 	@Override
 	public CompletableFuture<VariablesResponse> variables(VariablesArguments args) {
         var variables = new ArrayList<Variable>();
-        for (var entity : luceeVm_.getVariables(args.getVariablesReference())) {
+        IDebugEntity[] entities = args.getFilter() == null
+            ? luceeVm_.getVariables(args.getVariablesReference())
+            : args.getFilter() == VariablesArgumentsFilter.INDEXED
+            ? luceeVm_.getIndexedVariables(args.getVariablesReference())
+            : args.getFilter() == VariablesArgumentsFilter.NAMED
+            ? luceeVm_.getNamedVariables(args.getVariablesReference())
+            : new IDebugEntity[0];
+
+        for (var entity : entities) {
             var variable = new Variable();
             variable.setName(entity.getName());
             variable.setVariablesReference((int)entity.getVariablesReference());

@@ -49,21 +49,27 @@ class CfEntityRef implements ICfEntityRef {
         return selfRef.wrapped;
     }
 
-    public IDebugEntity[] getAsDebugEntity() {
+    /**
+     * @maybeNull_which --> null means "any type"
+     */
+    public IDebugEntity[] getAsDebugEntity(IDebugEntity.DebugEntityType maybeNull_which) {
         // reset strong refs, they could change here; discard old refs, maybe we'll get new ones during the method
         owned_keepAlive = new ArrayList<>();
 
-        if (cfEntity.wrapped instanceof Component) {
+        final boolean namedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.NAMED;
+        final boolean indexedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.INDEXED;
+
+        if (cfEntity.wrapped instanceof Component && namedOK) {
             @SuppressWarnings("unchecked")
             var m = (Map<String, Object>)((Component)cfEntity.wrapped).getComponentScope();
             return getAsMaplike(m);
         }
-        if (cfEntity.wrapped instanceof Map) {
+        if (cfEntity.wrapped instanceof Map && namedOK) {
             @SuppressWarnings("unchecked")
             var m = (Map<String, Object>)cfEntity.wrapped;
             return getAsMaplike(m);
         }
-        else if (cfEntity.wrapped instanceof Array) {
+        else if (cfEntity.wrapped instanceof Array && indexedOK) {
             return getAsCfArray();
         }
         else {
@@ -219,14 +225,23 @@ class CfEntityRef implements ICfEntityRef {
         if (cfEntity.wrapped instanceof Map) {
             return ((Map<?,?>)cfEntity.wrapped).size();
         }
-        return 0;
+        else {
+            return 0;
+        }
     }
 
     public int getIndexedVariablesCount() {
-        if (cfEntity.wrapped instanceof Array) {
+        if (cfEntity.wrapped instanceof lucee.runtime.type.scope.Argument) {
+            // `arguments` scope is both an Array and a Map, which represents the possiblity that a function is called with named args or positional args.
+            // It seems like saner default behavior to report it only as having named variables, and zero indexed variables.
+            return 0;
+        }
+        else if (cfEntity.wrapped instanceof Array) {
             return ((Array)cfEntity.wrapped).size();
         }
-        return 0;
+        else {
+            return 0;
+        }
     }
 
     /**

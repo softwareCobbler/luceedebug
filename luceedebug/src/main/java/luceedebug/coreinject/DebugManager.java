@@ -431,12 +431,15 @@ public class DebugManager implements IDebugManager {
         return frame.getScopes();
     }
 
-    synchronized public IDebugEntity[] getVariables(long id) {
+    /**
+     * @maybeNull_which --> null means "any type"
+     */
+    synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
         RefTracker.Wrapper_t<CfEntityRef> cfEntityRef = refTracker.maybeGetFromId(id);
         if (cfEntityRef == null) {
             return new IDebugEntity[0];
         }
-        return cfEntityRef.wrapped.getAsDebugEntity();
+        return cfEntityRef.wrapped.getAsDebugEntity(maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {

@@ -30,7 +30,7 @@ public interface IDebugManager {
     public void clearStepRequest(Thread thread);
     public IDebugFrame[] getCfStack(Thread thread);
     public IDebugEntity[] getScopesForFrame(long frameID);
-    public IDebugEntity[] getVariables(long id);
+    public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_whichType);
     public void registerCfStepHandler(CfStepCallback cb);
 
     public String doDump(ArrayList<Thread> suspendedThreads, int variableID);

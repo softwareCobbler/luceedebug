@@ -614,7 +614,15 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public IDebugEntity[] getVariables(long ID) {
-        return GlobalIDebugManagerHolder.debugManager.getVariables(ID);
+        return GlobalIDebugManagerHolder.debugManager.getVariables(ID, null);
+    }
+
+    public IDebugEntity[] getNamedVariables(long ID) {
+        return GlobalIDebugManagerHolder.debugManager.getVariables(ID, IDebugEntity.DebugEntityType.NAMED);
+    }
+
+    public IDebugEntity[] getIndexedVariables(long ID) {
+        return GlobalIDebugManagerHolder.debugManager.getVariables(ID, IDebugEntity.DebugEntityType.INDEXED);
     }
 
     static private class KlassMap {
