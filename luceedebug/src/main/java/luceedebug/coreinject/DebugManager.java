@@ -6,8 +6,15 @@ import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.VirtualMachine;
 
 import java.util.WeakHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -317,70 +324,45 @@ public class DebugManager implements IDebugManager {
         return result.value;
     }
 
-    public Either<ICfEntityRef, /*primitive, untracked literal value*/String> evaluate(Long frameID, String expr) {
-        var frame = frameByFrameID.get(frameID);
+    public Either</*err*/String, /*ok*/Either<ICfEntityRef, String>> evaluate(Long frameID, String expr) {
+        final var frame = frameByFrameID.get(frameID);
         if (frame != null) {
-            Object obj = doEvaluate(frame, expr);
-            
-            // what about bool, Long, etc. ?...
-            if (obj == null) {
-                return Either.Right("null");
-            }
-            else if (obj instanceof String) {
-                return Either.Right("\"" + ((String)obj).replaceAll("\"", "\\\"") + "\"");
-            }
-            else if (obj instanceof Number || obj instanceof Boolean) {
-                return Either.Right(obj.toString());
-            }
-            else {
-                return Either.Left(frame.trackEvalResult(obj));
-            }
+            return doEvaluate(frame, expr)
+                .bimap(
+                    err -> err,
+                    ok -> {
+                        // what about bool, Long, etc. ?...
+                        if (ok == null) {
+                            return Either.Right("null");
+                        }
+                        else if (ok instanceof String) {
+                            return Either.Right("\"" + ((String)ok).replaceAll("\"", "\\\"") + "\"");
+                        }
+                        else if (ok instanceof Number || ok instanceof Boolean) {
+                            return Either.Right(ok.toString());
+                        }
+                        else {
+                            return Either.Left(frame.trackEvalResult(ok));
+                        }
+                    }
+                );
         }
         else {
-            return Either.Right("\"<<no such frame>>\"");
+            return Either.Left("<<no such frame>>");
         }
     }
 
-    // TODO: Either<Ok, Err>
-    synchronized private Object doEvaluate(DebugFrame frame, String expr) {
-        final var result = new Object(){ Object value = null; };
-        final var thread = new Thread(() -> {
-            try {
-                frame.getFrameContext().doWorkInThisFrame(() -> {
-                    try {
-                        result.value = lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr});
-                    }
-                    catch (Throwable e) {
-                        // need Either<L,R> to disambiguate from null / error case
-                        // null pointer exceptions
-                        result.value = null;
-                    }
-                });
-            }
-            catch (Throwable e) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-        });
-
-        thread.start();
-
+    // concurrency here needs to be at the level of the DAP server?
+    // does the DAP server do multiple concurrent requests ... ? ... it's all one socket so probably not ? ... well many inbound messages can be being serviced ...
+    // we used to spin a thread per evaluate call; but, only in order to to register the page context with that thread, which, may not be necessary?
+    private Either</*err*/String, /*ok*/Object> doEvaluate(DebugFrame frame, String expr) {
         try {
-            // needs to be on its own thread for PageContext reasons
-            // but we still want to do this synchronously
-            thread.join();
+            return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
         }
         catch (Throwable e) {
-            if (thread.isAlive()) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-            else {
-                // thread is joined, discard exception
-            }
+            // we could do better
+            return Either.Left(e.getMessage());
         }
-
-        return result.value;
     }
 
     private final Cleaner cleaner = Cleaner.create();

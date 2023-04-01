@@ -20,6 +20,9 @@ import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.xtext.xbase.lib.Pure;
 import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
@@ -732,34 +735,52 @@ public class DapServer implements IDebugProtocolServer {
 	}
 
     static private AtomicLong anonymousID = new AtomicLong();
+
     public CompletableFuture<EvaluateResponse> evaluate(EvaluateArguments args) {
-        final var response = new EvaluateResponse();
-
-        if (args.getFrameId() != null) {
-            Either<ICfEntityRef, String> v = luceeVm_.evaluate(args.getFrameId(), args.getExpression());
-            if (v.isLeft()) {
-                final var name = "anonymous value " + anonymousID.incrementAndGet();
-                IDebugEntity value = v.getLeft().maybeNull_asValue(name);
-                if (value == null) {
-                    // some problem, or we tried to get a function from a cfc maybe? this needs work.
-                    response.setVariablesReference(0);
-                    response.setIndexedVariables(0);
-                    response.setNamedVariables(0);
-                    response.setResult("???");
-                }
-                else {
-                    response.setVariablesReference((int)(long)value.getVariablesReference());
-                    response.setIndexedVariables(value.getIndexedVariables());
-                    response.setNamedVariables(value.getNamedVariables());
-                    // want to see "Struct (4 members)" instead of "anonymous value X"
-                    response.setResult(value.getValue());
-                }
-            }
-            else {
-                response.setResult(v.getRight());
-            }
+        if (args.getFrameId() == null) {
+            final var exceptionalResult = new CompletableFuture<EvaluateResponse>();
+            final var error = new ResponseError(ResponseErrorCode.InvalidRequest, "missing frameID", null);
+            exceptionalResult.completeExceptionally(new ResponseErrorException(error));
+            return exceptionalResult;
         }
-
-        return CompletableFuture.completedFuture(response);
+        else {
+            return luceeVm_
+                .evaluate(args.getFrameId(), args.getExpression())
+                .collapse(
+                    errMsg -> {
+                        final var exceptionalResult = new CompletableFuture<EvaluateResponse>();
+                        final var error = new ResponseError(ResponseErrorCode.InternalError, errMsg, null);
+                        exceptionalResult.completeExceptionally(new ResponseErrorException(error));
+                        return exceptionalResult;
+                    },
+                    someResult -> {
+                        return someResult.collapse(
+                            someObj -> {
+                                final IDebugEntity value = someObj.maybeNull_asValue("anonymous value " + anonymousID.incrementAndGet());
+                                final var response = new EvaluateResponse();
+                                if (value == null) {
+                                    // some problem, or we tried to get a function from a cfc maybe? this needs work.
+                                    response.setVariablesReference(0);
+                                    response.setIndexedVariables(0);
+                                    response.setNamedVariables(0);
+                                    response.setResult("???");
+                                }
+                                else {
+                                    response.setVariablesReference((int)(long)value.getVariablesReference());
+                                    response.setIndexedVariables(value.getIndexedVariables());
+                                    response.setNamedVariables(value.getNamedVariables());
+                                    // want to see "Struct (4 members)" instead of "anonymous value X"
+                                    response.setResult(value.getValue());
+                                }
+                                return CompletableFuture.completedFuture(response);
+                            },
+                            string -> {
+                                final var response = new EvaluateResponse();
+                                response.setResult(string);
+                                return CompletableFuture.completedFuture(response);
+                            });
+                    }
+                );
+        }
     }    
 }
