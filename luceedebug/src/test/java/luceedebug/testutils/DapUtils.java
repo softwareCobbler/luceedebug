@@ -95,6 +95,13 @@ public class DapUtils {
         return dapServer.next(args);
     }
 
+    public static CompletableFuture<EvaluateResponse> evaluate(IDebugProtocolServer dapServer, int frameID, String expr) {
+        var args = new EvaluateArguments();
+        args.setFrameId(frameID);
+        args.setExpression(expr);
+        return dapServer.evaluate(args);
+    }
+
     public static class MockClient implements IDebugProtocolClient {
         public void breakpoint(BreakpointEventArguments args) {
 

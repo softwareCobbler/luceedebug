@@ -7,11 +7,12 @@ import java.util.Set;
 
 import lucee.runtime.type.scope.Scope;
 import lucee.runtime.Component;
+import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 
 import luceedebug.*;
 
-class CfEntityRef {
+class CfEntityRef implements ICfEntityRef {
     final String name;
     final ValTracker.Wrapper_t cfEntity; // strong ref
 
@@ -26,7 +27,7 @@ class CfEntityRef {
     private RefTracker<CfEntityRef> global_refTracker;
     private ValTracker global_valTracker;
 
-    long getId() {
+    public long getId() {
         return id;
     }
 
@@ -48,21 +49,27 @@ class CfEntityRef {
         return selfRef.wrapped;
     }
 
-    public IDebugEntity[] getAsDebugEntity() {
+    /**
+     * @maybeNull_which --> null means "any type"
+     */
+    public IDebugEntity[] getAsDebugEntity(IDebugEntity.DebugEntityType maybeNull_which) {
         // reset strong refs, they could change here; discard old refs, maybe we'll get new ones during the method
         owned_keepAlive = new ArrayList<>();
 
-        if (cfEntity.wrapped instanceof Component) {
+        final boolean namedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.NAMED;
+        final boolean indexedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.INDEXED;
+
+        if (cfEntity.wrapped instanceof Component && namedOK) {
             @SuppressWarnings("unchecked")
             var m = (Map<String, Object>)((Component)cfEntity.wrapped).getComponentScope();
             return getAsMaplike(m);
         }
-        if (cfEntity.wrapped instanceof Map) {
+        if (cfEntity.wrapped instanceof Map && namedOK) {
             @SuppressWarnings("unchecked")
             var m = (Map<String, Object>)cfEntity.wrapped;
             return getAsMaplike(m);
         }
-        else if (cfEntity.wrapped instanceof Array) {
+        else if (cfEntity.wrapped instanceof Array && indexedOK) {
             return getAsCfArray();
         }
         else {
@@ -120,6 +127,10 @@ class CfEntityRef {
         return maybeNull_asValue(name, cfEntity, false);
     }
 
+    public IDebugEntity maybeNull_asValue(String name) {
+        return maybeNull_asValue(name, cfEntity.wrapped);
+    }
+
     private IDebugEntity maybeNull_asValue(String name, Object cfEntity, boolean skipFunctionLikes) {
         DebugEntity val = new DebugEntity();
         val.name = name;
@@ -154,6 +165,31 @@ class CfEntityRef {
             || cfEntity instanceof lucee.runtime.type.UDFImpl)) {
             return null;
         }
+        else if (cfEntity instanceof lucee.runtime.type.QueryImpl) {
+            try {
+                lucee.runtime.type.query.QueryArray queryAsArrayOfStructs = lucee.runtime.type.query.QueryArray.toQueryArray((lucee.runtime.type.QueryImpl)cfEntity);
+                CfEntityRef freshRef = CfEntityRef.freshRef(global_valTracker, global_refTracker, "Query", queryAsArrayOfStructs);
+                owned_keepAlive.add(freshRef);
+                val.value = "Query (" + queryAsArrayOfStructs.size() + " rows)";
+                val.variablesReference = freshRef.getId();
+            }
+            catch (PageException e) {
+                //
+                // duplicative w/ catch-all else block
+                //
+                CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
+                owned_keepAlive.add(objRef);
+
+                try {
+                    val.value = cfEntity.getClass().toString();
+                }
+                catch (Throwable x) {
+                    val.value = "<?> (no string representation available)";
+                }
+
+                val.variablesReference = objRef.id;
+            }
+        }
         // too broad, will match components and etc.
         else if (cfEntity instanceof Map) {
             CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
@@ -185,18 +221,27 @@ class CfEntityRef {
         return val;
     }
 
-    int getNamedVariablesCount() {
-        if (cfEntity instanceof Map) {
-            return ((Map<?,?>)cfEntity).size();
+    public int getNamedVariablesCount() {
+        if (cfEntity.wrapped instanceof Map) {
+            return ((Map<?,?>)cfEntity.wrapped).size();
         }
-        return 0;
+        else {
+            return 0;
+        }
     }
 
-    int getIndexedVariablesCount() {
-        if (cfEntity instanceof Array) {
-            return ((Array)cfEntity).size();
+    public int getIndexedVariablesCount() {
+        if (cfEntity.wrapped instanceof lucee.runtime.type.scope.Argument) {
+            // `arguments` scope is both an Array and a Map, which represents the possiblity that a function is called with named args or positional args.
+            // It seems like saner default behavior to report it only as having named variables, and zero indexed variables.
+            return 0;
         }
-        return 0;
+        else if (cfEntity.wrapped instanceof Array) {
+            return ((Array)cfEntity.wrapped).size();
+        }
+        else {
+            return 0;
+        }
     }
 
     /**

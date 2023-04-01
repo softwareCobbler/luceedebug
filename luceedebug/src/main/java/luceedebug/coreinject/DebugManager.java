@@ -6,8 +6,15 @@ import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.VirtualMachine;
 
 import java.util.WeakHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,8 +28,8 @@ import java.net.ServerSocket;
 import java.net.SocketException;
 
 import lucee.runtime.PageContext;
-import luceedebug.DapServer;
 import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
+import lucee.runtime.exp.PageException;
 
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -117,11 +124,11 @@ public class DebugManager implements IDebugManager {
         }
 
         final var entity = findEntity(variableID);
-        if (entity.isError()) {
-            return "<div>" + entity.err + "</div>";
+        if (entity.isRight()) {
+            return "<div>" + entity.right + "</div>";
         }
 
-        return doDump(pageContext, entity.ok);
+        return doDump(pageContext, entity.left);
     }
 
     synchronized public String doDumpAsJSON(ArrayList<Thread> suspendedThreads, int variableID) {
@@ -131,60 +138,21 @@ public class DebugManager implements IDebugManager {
         }
 
         final var entity = findEntity(variableID);
-        if (entity.isError()) {
-            return "\"" + entity.err.replace("\"", "\\\"") + "\"";
+        if (entity.isRight()) {
+            return "\"" + entity.right.replace("\"", "\\\"") + "\"";
         }
 
-        return doDumpAsJSON(pageContext, entity.ok);
-    }
-
-    static class Result<OK_t, Err_t> {
-        enum OkOrError { ok, error };
-        final OkOrError okOrError;
-        final OK_t ok;
-        final Err_t err;
-        private Result(OkOrError okOrError, OK_t ok, Err_t err) {
-            if (okOrError == OkOrError.ok) {
-                this.okOrError = okOrError;
-                this.ok = ok;
-                this.err = null;
-            }
-            else if (okOrError == OkOrError.error) {
-                this.okOrError = okOrError;
-                this.ok = null;
-                this.err = err;
-            }
-            else {
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-            }
-        }
-        
-        public static <L,R> Result<L,R> OK(L v) {
-            return new Result<>(OkOrError.ok, v, null);
-        }
-
-        public static <L,R> Result<L,R> Err(R v) {
-            return new Result<>(OkOrError.ok, null, v);
-        }
-
-        public boolean isOK() {
-            return okOrError == OkOrError.ok;
-        }
-
-        public boolean isError() {
-            return okOrError == OkOrError.error;
-        }
+        return doDumpAsJSON(pageContext, entity.left);
     }
 
     // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
     // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
     // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
     // presumably all complex values have a ref + a variable? One too many layers of indirection?
-    synchronized private Result<Object, String> findEntity(int variableID) {
+    synchronized private Either<Object, String> findEntity(int variableID) {
         final var ref = refTracker.maybeGetFromId(variableID);
         if (ref == null) {
-            return Result.Err("Lookup of ref having ID " + variableID + " found nothing.");
+            return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
         }
 
         // paranoid null handling here, the target entity at the leaf could legitimately be null though,
@@ -195,7 +163,7 @@ public class DebugManager implements IDebugManager {
             ? null // shouldn't happen
             : ref.wrapped.cfEntity.wrapped;
 
-        return Result.OK(entity);
+        return Either.Left(entity);
     }
     
     /**
@@ -356,6 +324,105 @@ public class DebugManager implements IDebugManager {
         return result.value;
     }
 
+    public Either</*err*/String, /*ok*/Either<ICfEntityRef, String>> evaluate(Long frameID, String expr) {
+        final var frame = frameByFrameID.get(frameID);
+        if (frame != null) {
+            return doEvaluate(frame, expr)
+                .bimap(
+                    err -> err,
+                    ok -> {
+                        // what about bool, Long, etc. ?...
+                        if (ok == null) {
+                            return Either.Right("null");
+                        }
+                        else if (ok instanceof String) {
+                            return Either.Right("\"" + ((String)ok).replaceAll("\"", "\\\"") + "\"");
+                        }
+                        else if (ok instanceof Number || ok instanceof Boolean) {
+                            return Either.Right(ok.toString());
+                        }
+                        else {
+                            return Either.Left(frame.trackEvalResult(ok));
+                        }
+                    }
+                );
+        }
+        else {
+            return Either.Left("<<no such frame>>");
+        }
+    }
+
+    // concurrency here needs to be at the level of the DAP server?
+    // does the DAP server do multiple concurrent requests ... ? ... it's all one socket so probably not ? ... well many inbound messages can be being serviced ...
+    private Either</*err*/String, /*ok*/Object> doEvaluate(DebugFrame frame, String expr) {
+        try {
+            return CompletableFuture
+                .supplyAsync(
+                    (Supplier<Either<String,Object>>)(() -> {
+                        return frame
+                            .getFrameContext()
+                            .doWorkInThisFrame((Supplier<Either<String,Object>>)() -> {
+                                try {
+                                    lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
+                                    return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
+                                }
+                                catch (Throwable e) {
+                                    return Either.Left(e.getMessage());
+                                }
+                                finally {
+                                    lucee.runtime.engine.ThreadLocalPageContext.release();
+                                }
+                            });
+                    })
+                ).get(5, TimeUnit.SECONDS);
+        }
+        catch (Throwable e) {
+            return Either.Left(e.getMessage());
+        }
+    }
+
+    public boolean evaluateAsBooleanForConditionalBreakpoint(Thread thread, String expr) {
+        var stack = cfStackByThread.get(thread);
+        if (stack == null) {
+            return false;
+        }
+        if (stack.isEmpty()) {
+            return false;
+        }
+        return doEvaluateAsBoolean(stack.get(stack.size() - 1), expr);
+    }
+
+    private boolean doEvaluateAsBoolean(DebugFrame frame, String expr) {
+        try {
+            return CompletableFuture
+                .supplyAsync(
+                    (Supplier<Boolean>)(() -> {
+                        return frame
+                            .getFrameContext()
+                            .doWorkInThisFrame((Supplier<Boolean>)() -> {
+                                try {
+                                    lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
+                                    Object obj = lucee.runtime.functions.dynamicEvaluation.Evaluate.call(
+                                        frame.getFrameContext().pageContext,
+                                        new String[]{expr}
+                                    );
+                                    return lucee.runtime.op.Caster.toBoolean(obj);
+                                }
+                                catch (PageException e) {
+                                    return false;
+                                }
+                                finally {
+                                    lucee.runtime.engine.ThreadLocalPageContext.release();
+                                }
+                            });
+                    })
+                ).get(5, TimeUnit.SECONDS);
+        }
+        catch (Throwable e) {
+            return false;
+        }
+    }
+
     private final Cleaner cleaner = Cleaner.create();
 
     // MapMaker().concurrencyLevel(4).weakKeys().makeMap() ---> ~20% overhead on pushFrame/popFrame
@@ -368,7 +435,7 @@ public class DebugManager implements IDebugManager {
         .concurrencyLevel(/* default as per docs */ 4)
         .makeMap();
 
-    private final ConcurrentHashMap<Long, DebugFrame> frameTracker = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, DebugFrame> frameByFrameID = new ConcurrentHashMap<>();
     
     /**
      * an entity represents a Java object that itself is a CF object
@@ -396,7 +463,7 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized public IDebugEntity[] getScopesForFrame(long frameID) {
-        DebugFrame frame = frameTracker.get(frameID);
+        DebugFrame frame = frameByFrameID.get(frameID);
         //System.out.println("Get scopes for frame, frame was " + frame);
         if (frame == null) {
             return new IDebugEntity[0];
@@ -404,12 +471,15 @@ public class DebugManager implements IDebugManager {
         return frame.getScopes();
     }
 
-    synchronized public IDebugEntity[] getVariables(long id) {
+    /**
+     * @maybeNull_which --> null means "any type"
+     */
+    synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
         RefTracker.Wrapper_t<CfEntityRef> cfEntityRef = refTracker.maybeGetFromId(id);
         if (cfEntityRef == null) {
             return new IDebugEntity[0];
         }
-        return cfEntityRef.wrapped.getAsDebugEntity();
+        return cfEntityRef.wrapped.getAsDebugEntity(maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -606,7 +676,7 @@ public class DebugManager implements IDebugManager {
         //     System.out.println("  " + frame.getName() + " @ " + frame.getSourceFilePath() + ":" + frame.getLine());
         // }
 
-        frameTracker.put(frame.getId(), frame);
+        frameByFrameID.put(frame.getId(), frame);
 
         return frame;
     }
@@ -628,9 +698,13 @@ public class DebugManager implements IDebugManager {
 
         DebugFrame poppedFrame = null;
 
-        if (maybeNull_frameListing.size() > 0) {
+        if (maybeNull_frameListing.isEmpty()) {
+            System.out.println("Popping from an empty stack?");
+            System.exit(1);
+        }
+        else {
             poppedFrame = maybeNull_frameListing.remove(maybeNull_frameListing.size() - 1);
-            frameTracker.remove(poppedFrame.getId());
+            frameByFrameID.remove(poppedFrame.getId());
         }
 
         if (maybeNull_frameListing.size() == 0) {

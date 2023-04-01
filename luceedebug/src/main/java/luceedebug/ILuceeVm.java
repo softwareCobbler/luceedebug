@@ -29,10 +29,15 @@ public interface ILuceeVm {
     /**
      * note we return an array, for a single ID
      * The ID might be itself for an array or object, with many nested variables
+     *
+     * named and indexed are pretty much the same thing for CF purposes ... though we do report that something "has" indexed variables if it is an Array,
+     * so we'll need to respect frontend requests for those indexed variables.
      */
-    public IDebugEntity[] getVariables(long ID);
+    public IDebugEntity[] getVariables(long ID); // both named and indexed
+    public IDebugEntity[] getNamedVariables(long ID);
+    public IDebugEntity[] getIndexedVariables(long ID);
 
-    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines);
+    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines, String[] exprs);
 
     public void continue_(long jdwpThreadID);
 
@@ -59,4 +64,6 @@ public interface ILuceeVm {
      * @return String | null
      */
     public String getSourcePathForVariablesRef(int variablesRef);
+
+    public Either<String, Either<ICfEntityRef, String>> evaluate(int frameID, String expr);
 }

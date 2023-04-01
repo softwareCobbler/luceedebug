@@ -30,7 +30,7 @@ public interface IDebugManager {
     public void clearStepRequest(Thread thread);
     public IDebugFrame[] getCfStack(Thread thread);
     public IDebugEntity[] getScopesForFrame(long frameID);
-    public IDebugEntity[] getVariables(long id);
+    public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_whichType);
     public void registerCfStepHandler(CfStepCallback cb);
 
     public String doDump(ArrayList<Thread> suspendedThreads, int variableID);
@@ -40,4 +40,7 @@ public interface IDebugManager {
      * @return String, or null if there is no path for the target ref
      */
     public String getSourcePathForVariablesRef(int variablesRef);
+
+    public Either<String, Either<ICfEntityRef, /*primitive value*/String>> evaluate(Long frameID, String expr);
+    public boolean evaluateAsBooleanForConditionalBreakpoint(Thread thread, String expr);
 }

@@ -1,5 +1,6 @@
 package luceedebug;
 
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
@@ -18,6 +20,9 @@ import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
 import org.eclipse.xtext.xbase.lib.Pure;
 import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
@@ -57,7 +62,7 @@ public class DapServer implements IDebugProtocolServer {
         return applyPathTransforms(
             s,
             (transform, path) -> transform.ideToServer(path)
-        );
+        ).replaceAll("\\\\|/", File.separator);
     }
     
     private String applyPathTransformsCfToIde(String s) {
@@ -168,7 +173,12 @@ public class DapServer implements IDebugProtocolServer {
     public CompletableFuture<Capabilities> initialize(InitializeRequestArguments args) {
         var c = new Capabilities();
         c.setSupportsConfigurationDoneRequest(true);
-        c.setSupportsSingleThreadExecutionRequests(true);
+        c.setSupportsSingleThreadExecutionRequests(true); // but, vscode does not (from the stack frame panel at least?)
+
+        c.setSupportsConditionalBreakpoints(true);
+        c.setSupportsHitConditionalBreakpoints(false); // still shows UI for it though
+        c.setSupportsLogPoints(false); // still shows UI for it though
+
         return CompletableFuture.completedFuture(c);
     }
 
@@ -329,7 +339,15 @@ public class DapServer implements IDebugProtocolServer {
 	@Override
 	public CompletableFuture<VariablesResponse> variables(VariablesArguments args) {
         var variables = new ArrayList<Variable>();
-        for (var entity : luceeVm_.getVariables(args.getVariablesReference())) {
+        IDebugEntity[] entities = args.getFilter() == null
+            ? luceeVm_.getVariables(args.getVariablesReference())
+            : args.getFilter() == VariablesArgumentsFilter.INDEXED
+            ? luceeVm_.getIndexedVariables(args.getVariablesReference())
+            : args.getFilter() == VariablesArgumentsFilter.NAMED
+            ? luceeVm_.getNamedVariables(args.getVariablesReference())
+            : new IDebugEntity[0];
+
+        for (var entity : entities) {
             var variable = new Variable();
             variable.setName(entity.getName());
             variable.setVariablesReference((int)entity.getVariablesReference());
@@ -349,12 +367,14 @@ public class DapServer implements IDebugProtocolServer {
         logger.finest("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
+        final String[] exprs = new String[size];
         for (int i = 0; i < size; ++i) {
             lines[i] = args.getBreakpoints()[i].getLine();
+            exprs[i] = args.getBreakpoints()[i].getCondition();
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines)) {
+        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines, exprs)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(cfBreakpoint));
         }
         
@@ -720,4 +740,54 @@ public class DapServer implements IDebugProtocolServer {
 
         return CompletableFuture.completedFuture(response);
 	}
+
+    static private AtomicLong anonymousID = new AtomicLong();
+
+    public CompletableFuture<EvaluateResponse> evaluate(EvaluateArguments args) {
+        if (args.getFrameId() == null) {
+            final var exceptionalResult = new CompletableFuture<EvaluateResponse>();
+            final var error = new ResponseError(ResponseErrorCode.InvalidRequest, "missing frameID", null);
+            exceptionalResult.completeExceptionally(new ResponseErrorException(error));
+            return exceptionalResult;
+        }
+        else {
+            return luceeVm_
+                .evaluate(args.getFrameId(), args.getExpression())
+                .collapse(
+                    errMsg -> {
+                        final var exceptionalResult = new CompletableFuture<EvaluateResponse>();
+                        final var error = new ResponseError(ResponseErrorCode.InternalError, errMsg, null);
+                        exceptionalResult.completeExceptionally(new ResponseErrorException(error));
+                        return exceptionalResult;
+                    },
+                    someResult -> {
+                        return someResult.collapse(
+                            someObj -> {
+                                final IDebugEntity value = someObj.maybeNull_asValue("anonymous value " + anonymousID.incrementAndGet());
+                                final var response = new EvaluateResponse();
+                                if (value == null) {
+                                    // some problem, or we tried to get a function from a cfc maybe? this needs work.
+                                    response.setVariablesReference(0);
+                                    response.setIndexedVariables(0);
+                                    response.setNamedVariables(0);
+                                    response.setResult("???");
+                                }
+                                else {
+                                    response.setVariablesReference((int)(long)value.getVariablesReference());
+                                    response.setIndexedVariables(value.getIndexedVariables());
+                                    response.setNamedVariables(value.getNamedVariables());
+                                    // want to see "Struct (4 members)" instead of "anonymous value X"
+                                    response.setResult(value.getValue());
+                                }
+                                return CompletableFuture.completedFuture(response);
+                            },
+                            string -> {
+                                final var response = new EvaluateResponse();
+                                response.setResult(string);
+                                return CompletableFuture.completedFuture(response);
+                            });
+                    }
+                );
+        }
+    }    
 }
