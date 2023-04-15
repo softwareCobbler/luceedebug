@@ -431,40 +431,38 @@ public class LuceeVm implements ILuceeVm {
     }
 
     private void initEventPump() {
-        new java.lang.Thread(new Runnable() {
-            public void run() {
-                try {
-                    while (true) {
-                        var eventSet = vm_.eventQueue().remove();
-                        for (var event : eventSet) {
-                            if (event instanceof ThreadStartEvent) {
-                                handleThreadStartEvent((ThreadStartEvent) event);
-                            }
-                            else if (event instanceof ThreadDeathEvent) {
-                                handleThreadDeathEvent((ThreadDeathEvent) event);
-                            }
-                            else if (event instanceof ClassPrepareEvent) {
-                                handleClassPrepareEvent((ClassPrepareEvent) event);
-                            }
-                            else if (event instanceof BreakpointEvent) {
-                                handleBreakpointEvent((BreakpointEvent) event);
-                            }
-                            else {
-                                System.out.println("Unexpected jdwp event " + event);
-                                System.exit(1);
-                            }
+        new java.lang.Thread(() -> {
+            try {
+                while (true) {
+                    var eventSet = vm_.eventQueue().remove();
+                    for (var event : eventSet) {
+                        if (event instanceof ThreadStartEvent) {
+                            handleThreadStartEvent((ThreadStartEvent) event);
+                        }
+                        else if (event instanceof ThreadDeathEvent) {
+                            handleThreadDeathEvent((ThreadDeathEvent) event);
+                        }
+                        else if (event instanceof ClassPrepareEvent) {
+                            handleClassPrepareEvent((ClassPrepareEvent) event);
+                        }
+                        else if (event instanceof BreakpointEvent) {
+                            handleBreakpointEvent((BreakpointEvent) event);
+                        }
+                        else {
+                            System.out.println("Unexpected jdwp event " + event);
+                            System.exit(1);
                         }
                     }
                 }
-                catch (InterruptedException e) {
-                    // Maybe we want to handle this differently?
-                    e.printStackTrace();
-                    System.exit(1);
-                }
-                catch (Throwable e) {
-                    e.printStackTrace();
-                    System.exit(1);
-                }
+            }
+            catch (InterruptedException e) {
+                // Maybe we want to handle this differently?
+                e.printStackTrace();
+                System.exit(1);
+            }
+            catch (Throwable e) {
+                e.printStackTrace();
+                System.exit(1);
             }
         }).start();
     }
