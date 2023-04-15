@@ -360,15 +360,34 @@ public class LuceeVm implements ILuceeVm {
                     // instruction, which is how we got here. We want to resume the thread but then immediately stop after
                     // returning from the invokeVirtual. Using jdwp breakpoints in this way, instead of
                     // the perhaps more obvious jdwp step-notifications approach, avoids dropping the jvm into interpreted mode.
+                    //
+                    // Thread filter considerations, troubleshooting weird "stepping across thread" behavior.
+                    // currentLoc + 3 might be (handwavingly)
+                    //   udfCallN():
+                    //   bc 0 <-- you are here
+                    //   bc +3 <-- jumping here
+                    //   bc +6
+                    //   ...
+                    // But it's possible that the bc+3 represents a jump target from a switch dispatch table or elsewhere,
+                    // (which is commonly used to dispatch local functions), and we are at the end of a control flow,
+                    // where we've just scheduled work, whose code begins at bc+3, on a separate thread, as in
+                    //
+                    // (suspended on this line) | scheduleWork(() => {/* stepping over this can land on another thread */})
+                    //
+                    // So we want to add a thread filter to prevent weird jumps across threads.
+                    //
+                    // It's not clear why we'd match such a step events up from the step event handler though.
+                    //
                     final var frame = threadRef.frame(distanceToFrame);
                     final var location = frame.location().method().locationOfCodeIndex(frame.location().codeIndex() + 3);
 
                     final var bp = vm_.eventRequestManager().createBreakpointRequest(location);
                     bp.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
+                    bp.addThreadFilter(threadRef); // can we jump threads? seems like it doing something like linkedBlockingDeque.offer(new Runnable(() => ...)) ?
                     bp.addCountFilter(1);
                     bp.setEnabled(true);
                     
-                    steppingState = SteppingState.finalizingViaAwaitedBreakpoint;
+                    steppingStatesByThread.put(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint); // races with step handlers ?
 
                     continue_(threadRef);
                     done.set(true);
@@ -393,8 +412,8 @@ public class LuceeVm implements ILuceeVm {
      * `isStepping=true` means "the next breakpoint we hit actually implies a completed DAP step event, rather
      * than a user-defined breakpoint event"
      */
-    private static enum SteppingState { none, stepping, finalizingViaAwaitedBreakpoint }
-    private SteppingState steppingState = SteppingState.none;
+    private static enum SteppingState { stepping, finalizingViaAwaitedBreakpoint }
+    private ConcurrentMap</*jdwp threadID*/Long, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
     private Consumer</*jdwp threadID*/Long> stepEventCallback = null;
     private BiConsumer</*jdwp threadID*/ Long, /*breakpoint ID*/ Integer> breakpointEventCallback = null;
     private Consumer<BreakpointsChangedEvent> breakpointsChangedCallback = null;
@@ -571,10 +590,9 @@ public class LuceeVm implements ILuceeVm {
 
         suspendedThreads.add(threadRef.uniqueID());
 
-        if (steppingState == SteppingState.finalizingViaAwaitedBreakpoint) {
+        if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint)) {
             // We're stepping, and we completed a step; now, we hit the breakpoint
             // that the step-completition handler installed. Stepping is complete.
-            steppingState = SteppingState.none;
             if (stepEventCallback != null) {
                 // We would delete the breakpoint request here,
                 // but it should have been registered with an eventcount filter of 1,
@@ -584,9 +602,8 @@ public class LuceeVm implements ILuceeVm {
         }
         else {
             // if we are stepping, but we hit a breakpoint, cancel the stepping
-            if (steppingState == SteppingState.stepping) {
+            if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.stepping)) {
                 GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadRef.uniqueID()));
-                steppingState = SteppingState.none;
             }
 
             final EventRequest request = event.request();
@@ -882,16 +899,18 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void stepIn(long jdwpThreadID) {
-        if (steppingState != SteppingState.none) {
+        if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
 
-        steppingState = SteppingState.stepping;
+        steppingStatesByThread.put(jdwpThreadID, SteppingState.stepping);
 
         var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadID);
         var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
 
         if (threadRef.suspendCount() == 0) {
+            System.out.println("step in handler expected thread " + thread + " to already be suspended, but suspendCount was 0.");
+            System.exit(1);
             return;
         }
 
@@ -901,11 +920,11 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void stepOver(long jdwpThreadID) {
-        if (steppingState != SteppingState.none) {
+        if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
 
-        steppingState = SteppingState.stepping;
+        steppingStatesByThread.put(jdwpThreadID, SteppingState.stepping);
 
         var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadID);
         var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
@@ -922,16 +941,18 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void stepOut(long jdwpThreadID) {
-        if (steppingState != SteppingState.none) {
+        if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
 
-        steppingState = SteppingState.stepping;
+        steppingStatesByThread.put(jdwpThreadID, SteppingState.stepping);
 
         var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadID);
         var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
 
         if (threadRef.suspendCount() == 0) {
+            System.out.println("step out handler expected thread " + thread + " to already be suspended, but suspendCount was 0.");
+            System.exit(1);
             return;
         }
 
