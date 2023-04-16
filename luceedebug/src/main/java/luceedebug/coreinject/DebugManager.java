@@ -566,15 +566,10 @@ public class DebugManager implements IDebugManager {
         stepRequestByThread.remove(thread);
     }
 
-    public void step(int distanceToActualFrame, int lineNumber) {
-        long start = System.nanoTime();
+    public void step(int lineNumber) {
+        final int distanceToActualFrame = 1; // hardcoded expectation that we were invoked directly from the cf classfile
         Thread currentThread = Thread.currentThread();
-        
-        DebugFrame frame = maybeUpdateTopmostFrame(currentThread, lineNumber);
-        if (frame == null) {
-            // ? caller probably shouldn't have called
-            return;
-        }
+        DebugFrame frame = maybeUpdateTopmostFrame(currentThread, lineNumber); // should be "definite update topmost frame", we 100% expect there to be a frame
 
         CfStepRequest request = stepRequestByThread.get(currentThread);
         if (request == null) {
@@ -582,7 +577,28 @@ public class DebugManager implements IDebugManager {
         }
         else {
             request.__debug__steps++;
-            maybeNotifyOfStepCompletion(currentThread, frame, request, distanceToActualFrame + 1, start);
+            maybeNotifyOfStepCompletion(currentThread, frame, request, distanceToActualFrame + 1, System.nanoTime());
+        }
+    }
+
+    /**
+     * we need to know when stepped out of a udf call, back to the callsite.
+     * This is different that "did the frame get popped", because if an exception was thrown, we won't return to the callsite even though the frame does get popped.
+     * So we want the debugger to return to the callsite in the normal case, but jump to any catch/finally blocks in the exceptional case.
+     */
+    public void stepAfterCompletedUdfCall() {
+        final int distanceToActualFrame = 1; // hardcoded expectation that we were invoked directly from the cf classfile
+
+        Thread currentThread = Thread.currentThread();
+        DebugFrame frame = getTopmostFrame(Thread.currentThread());
+
+        CfStepRequest request = stepRequestByThread.get(currentThread);
+        if (request == null) {
+            return;
+        }
+        else {
+            request.__debug__steps++;
+            maybeNotifyOfStepCompletion(currentThread, frame, request, distanceToActualFrame + 1, System.nanoTime());
         }
     }
 
@@ -711,44 +727,6 @@ public class DebugManager implements IDebugManager {
             // we popped the last frame, so we destroy the whole stack
             cfStackByThread.remove(currentThread);
             pageContextByThread.remove(currentThread);
-        }
-        else {
-            //
-            // When we pop a frame, check if there's a step request (of any kind, in/out/over).
-            // Popping frames doesn't issue step requests, so we otherwise wouldn't observe this event.
-            // e.g. in `foo(1).foo(2).foo(3)`
-            // after stepping into foo(1), stepping out would (without this check) run until the next step event,
-            // which (probably? usually? generally) would occur inside of foo(2), but we want to see the ide jump back
-            // to the foo.foo.foo line before entering foo(2)
-            //
-            if (poppedFrame != null) {
-                var stepRequest = stepRequestByThread.get(currentThread);
-                if ( stepRequest != null ) {
-                    var topMostFrame = getTopmostFrame(currentThread); // guaranteed by virtue of frameListing.size() != 0
-                    if (topMostFrame.getLine() != 0) {
-                        //
-                        // check that the frame isn't a weird useless frame by checking that it's line isn't zero;
-                        // it's not really clear why we push these onto the stack at all (basically every other frame)
-                        // note that we also do the same check when serializing frames to the frontend
-                        //
-                        if (!poppedFrame.isFunctionDefaultValueInitializationFrame || stepRequest.type == CfStepRequest.STEP_OUT) {
-                            //
-                            // If we're in a "udfDefaultValue" frame, considering a pop to be a step is weird behavior, after ever default value initialization you step out to the caller and then back,
-                            // like `function foo(a = 1, b = 2, c = 3) {...}`, that's three pops but we should just ignore them.
-                            // unless the user explicitly stepped out, then that pops out to the line doing the current function call, and a step in will descend into the body.
-                            // arguably we'd want "step out of default value init" to jump directly into the function body.
-                            //
-                            maybeNotifyOfStepCompletion(
-                                currentThread,
-                                getTopmostFrame(currentThread),
-                                stepRequest,
-                                /* hardcoded, to assume "current depth to target frame is 1" */ 2,
-                                System.nanoTime()    
-                            );
-                        }
-                    }
-                }
-            }
         }
     }
 
