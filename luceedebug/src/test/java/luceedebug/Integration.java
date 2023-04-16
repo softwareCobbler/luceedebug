@@ -664,6 +664,7 @@ class Integration {
             dockerClient.removeContainerCmd(containerID).exec();
         }
     }
+
     /**
      * This does not work recursively, and requires that exactly and only a single stop event (i.e. the target stop event)
      * be fired during the wait on the returned future.
