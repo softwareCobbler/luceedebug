@@ -4,3 +4,6 @@ bin
 
 # Ignore Gradle build output directory
 build
+
+.bsp
+.idea
