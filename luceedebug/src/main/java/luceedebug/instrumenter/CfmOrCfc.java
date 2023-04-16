@@ -132,7 +132,9 @@ public class CfmOrCfc extends ClassVisitor {
                     ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
                     ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_popCfFrame);
 
-                    // non-exceptional function return gets a step notification
+                    // non-exceptional function return gets a step notification,
+                    // with the exception of udfDefaultValue frames (serves to set function default args), which behave sort of weirdly
+                    // (as if they're merged with their associated UDF? not clear at the moment)
                     if (!name.equals("udfDefaultValue")) {
                         ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
                         ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_stepAfterCompletedUdfCall);
@@ -201,7 +203,7 @@ public class CfmOrCfc extends ClassVisitor {
                     // step
                     {
                         this.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
-                        this.push(line); // line
+                        this.push(line);
                         this.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_step);
                     }
 

@@ -27,7 +27,7 @@ import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
 class StepToCatchBlock {
     @Test
-    void stepping_through_default_args() throws Throwable {
+    void steps_to_finally_and_then_catch_skipping_past_unwound_lines() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
 
