@@ -25,7 +25,10 @@ public interface IDebugManager {
      */
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame);
     public void popCfFrame();
-    public void step(int depthToFrame, int currentLine);
+
+    public void step(int currentLine);
+    public void stepAfterCompletedUdfCall();
+
     public void registerStepRequest(Thread thread, int stepType);
     public void clearStepRequest(Thread thread);
     public IDebugFrame[] getCfStack(Thread thread);

@@ -36,8 +36,10 @@ public class CfmOrCfc extends ClassVisitor {
         static final Method m_pushCfFunctionDefaultValueInitializationFrame = Method.getMethod("void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext, String, int)");
         // popCfFrame : () => void 
         static final Method m_popCfFrame = Method.getMethod("void popCfFrame()");
-        // step : (depthToFrame : int, currentLine : int) => void
-        static final Method m_step = Method.getMethod("void step(int, int)");
+        // step : (currentLine : int) => void
+        static final Method m_step = Method.getMethod("void step(int)");
+        // stepAfterCompletedUdfCall : () => void
+        static final Method m_stepAfterCompletedUdfCall = Method.getMethod("void stepAfterCompletedUdfCall()");
     }
 
     static class GlobalIDebugManagerHolder_t {
@@ -129,6 +131,14 @@ public class CfmOrCfc extends ClassVisitor {
                 {
                     ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
                     ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_popCfFrame);
+
+                    // non-exceptional function return gets a step notification,
+                    // with the exception of udfDefaultValue frames (serves to set function default args), which behave sort of weirdly
+                    // (as if they're merged with their associated UDF? not clear at the moment)
+                    if (!name.equals("udfDefaultValue")) {
+                        ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
+                        ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_stepAfterCompletedUdfCall);
+                    }
                 }
                 
                 // [<return-value>]
@@ -148,6 +158,10 @@ public class CfmOrCfc extends ClassVisitor {
                 {
                     ga.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
                     ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_popCfFrame);
+
+                    //
+                    // n.b exceptional function return DOES NOT get a step notification
+                    //
                 }
                 // [<exception-object>]
 
@@ -184,14 +198,12 @@ public class CfmOrCfc extends ClassVisitor {
             final var mv = super.visitMethod(access, delegateToName, descriptor, signature, exceptions);
 
             return new AdviceAdapter(this.api, mv, access, delegateToName, descriptor) {
-
                 @Override
                 public void visitLineNumber(int line, Label start) {
                     // step
                     {
                         this.getStatic(GlobalIDebugManagerHolder_t.type, "debugManager", IDebugManager_t.type);
-                        this.push(1); // depth to actual frame
-                        this.push(line); // line
+                        this.push(line);
                         this.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_step);
                     }
 

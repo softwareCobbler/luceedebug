@@ -67,9 +67,9 @@ tasks.test {
 
     // maxHeapSize = "1G" // infinite, don't care
 
-    // We want parallelism, but we first need to have some kind of port number manager.
-    // Spinning up docker containers seems easy enough but they all have to have unique ports.
-    maxParallelForks = 1
+    maxParallelForks = (Runtime.getRuntime().availableProcessors()).coerceAtLeast(1).also {
+        println("Setting maxParallelForks to $it")
+    }
 
     testLogging {
         events("passed")

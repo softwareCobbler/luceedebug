@@ -4,16 +4,15 @@ import java.io.File;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
-
-import javax.annotation.Nonnull;
+import java.util.Map;
 
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.ExposedPort;
-import com.github.dockerjava.api.model.ExposedPorts;
 import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.NetworkSettings;
 import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.Ports;
 import com.github.dockerjava.api.model.Volume;
 import com.github.dockerjava.api.model.Ports.Binding;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
@@ -85,6 +84,7 @@ public class DockerUtils {
         }
 
         var hostConfig = new HostConfig();
+        hostConfig.withPublishAllPorts(true);
 
         hostConfig.setBinds(
             new Bind(
@@ -96,16 +96,59 @@ public class DockerUtils {
                 new Volume("/var/www/")
             )
         );
+        
 
-        hostConfig.withPortBindings(portBindings);
+        // hostConfig.withPortBindings(portBindings);
 
         return new ContainerID(
             dockerClient
                 .createContainerCmd(imageID)
-                .withHostConfig(hostConfig)
                 .withExposedPorts(exposedPorts)
+                .withHostConfig(hostConfig)
                 .exec()
                 .getId()
         );
+    }
+
+    public static class HostPortBindings {
+        public final int http;
+        public final int dap;
+        HostPortBindings(int http, int dap) {
+            this.http = http;
+            this.dap = dap;
+        }
+    }
+
+    /**
+     * this is hardcoded to assume we've already bound the ports on the container to particular magic numbers,
+     * which should be fixed before we go too much further.
+     */
+    public static HostPortBindings getPublishedHostPortBindings(DockerClient dockerClient, String containerID) {
+        NetworkSettings networkSettings = dockerClient
+            .inspectContainerCmd(containerID)
+            .exec()
+            .getNetworkSettings();
+
+        Ports portBindings = networkSettings.getPorts();
+        Map<ExposedPort, Binding[]> bindings = portBindings.getBindings();
+    
+        int http = -1;
+        int dap = -1;
+        for (var entry : bindings.entrySet()) {
+            int containerPort = entry.getKey().getPort();
+            int hostPort = Integer.parseInt(entry.getValue()[0].getHostPortSpec());
+            if (containerPort == 8888) {
+                http = hostPort;
+            }
+            else if (containerPort == 10000) {
+                dap = hostPort;
+            }
+        }
+
+        if (http == -1 || dap == -1) {
+            throw new RuntimeException("couldn't determine host<->container port bindings");
+        }
+
+        return new HostPortBindings(http, dap);
     }
 }
