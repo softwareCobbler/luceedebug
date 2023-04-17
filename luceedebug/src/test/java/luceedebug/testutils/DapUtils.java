@@ -10,6 +10,24 @@ import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 
 public class DapUtils {
+    /**
+     * This does not work recursively, and requires that exactly and only a single stop event (i.e. the target stop event)
+     * be fired during the wait on the returned future.
+     *
+     * We might want to await this here, rather than allow the caller to do so, where if they forget to wait it's likely a bug.
+     *
+     * "do some work that should trigger the debugee to soon (microseconds) emit a stop event and return a future that resolves on receipt of that stopped event"
+     */
+    public static CompletableFuture<StoppedEventArguments> doWithStoppedEventFuture(MockClient client, Runnable f) {
+        final var future = new CompletableFuture<StoppedEventArguments>();
+        client.stopped_handler = stoppedEventArgs -> {
+            client.stopped_handler = null; // concurrency issues? Callers should be synchronous with respect to this action though.
+            future.complete(stoppedEventArgs);
+        };
+        f.run();
+        return future;
+    };
+
     public static CompletableFuture<SetBreakpointsResponse> setBreakpoints(
         IDebugProtocolServer dapServer,
         String filename,

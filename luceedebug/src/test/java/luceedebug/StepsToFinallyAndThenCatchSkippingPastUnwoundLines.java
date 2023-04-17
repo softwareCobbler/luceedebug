@@ -1,6 +1,5 @@
 package luceedebug;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -9,9 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 
 import com.github.dockerjava.api.DockerClient;
 import com.google.api.client.http.GenericUrl;
@@ -21,13 +18,13 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
 import luceedebug.testutils.LuceeUtils;
+import luceedebug.testutils.DockerUtils.HostPortBindings;
 
-import org.eclipse.lsp4j.debug.*;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
-class StepToCatchBlock {
+class StepsToFinallyAndThenCatchSkippingPastUnwoundLines {
     @Test
-    void steps_to_finally_and_then_catch_skipping_past_unwound_lines() throws Throwable {
+    void a() throws Throwable {
         final Path projectRoot = Paths.get("").toAbsolutePath();
         final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
 
@@ -54,13 +51,15 @@ class StepToCatchBlock {
             .startContainerCmd(containerID)
             .exec();
 
+        HostPortBindings portBindings = DockerUtils.getPublishedHostPortBindings(dockerClient, containerID);
+      
         try {
-            LuceeUtils.pollForServerIsActive("http://localhost:8888/heartbeat.cfm");
+            LuceeUtils.pollForServerIsActive("http://localhost:" + portBindings.http + "/heartbeat.cfm");
 
             final var dapClient = new DapUtils.MockClient();
 
             final var FIXME_socket_needs_close = new Socket();
-            FIXME_socket_needs_close.connect(new InetSocketAddress("localhost", 10000));
+            FIXME_socket_needs_close.connect(new InetSocketAddress("localhost", portBindings.dap));
             final var launcher = DSPLauncher.createClientLauncher(dapClient, FIXME_socket_needs_close.getInputStream(), FIXME_socket_needs_close.getOutputStream());
             launcher.startListening();
             final var dapServer = launcher.getRemoteProxy();
@@ -76,7 +75,7 @@ class StepToCatchBlock {
                 final var requestFactory = new NetHttpTransport().createRequestFactory();
                 HttpRequest request;
                 try {
-                    request = requestFactory.buildGetRequest(new GenericUrl("http://localhost:8888/a.cfm"));
+                    request = requestFactory.buildGetRequest(new GenericUrl("http://localhost:" + portBindings.http + "/a.cfm"));
                     request.execute().disconnect();
                 }
                 catch (IOException e) {
@@ -84,13 +83,13 @@ class StepToCatchBlock {
                 }
             });
 
-            final var threadID = doWithStoppedEventFuture(
+            final var threadID = DapUtils.doWithStoppedEventFuture(
                 dapClient,
                 () -> requestThreadToBeBlockedByBreakpoint.start()
             ).get(1000, TimeUnit.MILLISECONDS).getThreadId();
 
             {
-                doWithStoppedEventFuture(
+                DapUtils.doWithStoppedEventFuture(
                     dapClient,
                     () -> DapUtils.stepIn(dapServer, threadID)
                 ).get(1000, TimeUnit.MILLISECONDS);
@@ -109,7 +108,7 @@ class StepToCatchBlock {
             }
 
             {
-                doWithStoppedEventFuture(
+                DapUtils.doWithStoppedEventFuture(
                     dapClient,
                     () -> DapUtils.stepIn(dapServer, threadID)
                 ).get(1000, TimeUnit.MILLISECONDS);
@@ -128,7 +127,7 @@ class StepToCatchBlock {
             }
 
             {
-                doWithStoppedEventFuture(
+                DapUtils.doWithStoppedEventFuture(
                     dapClient,
                     () -> DapUtils.stepIn(dapServer, threadID)
                 ).get(1000, TimeUnit.MILLISECONDS);
@@ -147,7 +146,7 @@ class StepToCatchBlock {
             }
 
             {
-                doWithStoppedEventFuture(
+                DapUtils.doWithStoppedEventFuture(
                     dapClient,
                     () -> DapUtils.stepIn(dapServer, threadID)
                 ).get(1000, TimeUnit.MILLISECONDS);
@@ -172,22 +171,4 @@ class StepToCatchBlock {
             dockerClient.removeContainerCmd(containerID).exec();
         }
     }
-
-    /**
-     * This does not work recursively, and requires that exactly and only a single stop event (i.e. the target stop event)
-     * be fired during the wait on the returned future.
-     *
-     * We might want to await this here, rather than allow the caller to do so, where if they forget to wait it's likely a bug.
-     *
-     * "do some work that should trigger the debugee to soon (microseconds) emit a stop event and return a future that resolves on receipt of that stopped event"
-     */
-    private static CompletableFuture<StoppedEventArguments> doWithStoppedEventFuture(DapUtils.MockClient client, Runnable f) {
-        final var future = new CompletableFuture<StoppedEventArguments>();
-        client.stopped_handler = stoppedEventArgs -> {
-            client.stopped_handler = null; // concurrency issues? Callers should be synchronous with respect to this action though.
-            future.complete(stoppedEventArgs);
-        };
-        f.run();
-        return future;
-    };
 }
