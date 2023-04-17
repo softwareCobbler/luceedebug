@@ -129,9 +129,9 @@ class JdwpProxy {
     val parser = PacketParser()
 
     while true do {
-      parser.consume(readChunk()) match
-        case Some(packet) => 0
-        case None => 0
+      // parser.consume(readChunk()) match
+      //   case Some(packet) => 0
+      //   case None => 0
     }
 }
 

@@ -5,5 +5,4 @@ ThisBuild / scalaVersion := "3.2.2"
 lazy val root = (project in file("."))
   .settings(
     name := "jdwp_proxy",
-    idePackagePrefix := Some("luceedebug.jdwp_proxy")
   )
