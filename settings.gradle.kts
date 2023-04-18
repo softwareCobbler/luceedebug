@@ -10,3 +10,4 @@
 rootProject.name = "asm-use"
 // aug/25/2022 -- unused include("app")
 include("luceedebug")
+include("jdwp-proxy")

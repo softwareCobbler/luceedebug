@@ -52,6 +52,8 @@ dependencies {
 
     // https://mvnrepository.com/artifact/org.eclipse.lsp4j/org.eclipse.lsp4j.debug
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.15.0")
+
+    implementation(project(":jdwp-proxy"))
 }
 
 java {

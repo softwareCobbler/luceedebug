@@ -132,6 +132,7 @@ public class Agent {
     }
 
     public static void premain(String argString, Instrumentation inst) throws Throwable {
+        System.out.println(luceedebug.jdwp_proxy.Command.class);
         final var parsedArgs = new AgentArgs(argString);
 
         if (!new File(parsedArgs.jarPath).exists()) {
