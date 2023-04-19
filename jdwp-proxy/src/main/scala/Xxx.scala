@@ -10,6 +10,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.*
 import scala.util.{Failure, Success, Try}
+import scala.annotation.tailrec
 
 enum Foo:
   case X(v: Any)
@@ -135,8 +136,145 @@ class JdwpProxy {
     }
 }
 
-class PacketParser {
+package rawpacket:
+  class PacketBuilder {
+    val length = new ArrayBuffer[Byte](4)
+    val id = new ArrayBuffer[Byte](4)
+    val last3 = new ArrayBuffer[Byte](3)
+    val body = new ArrayBuffer[Byte]
 
+    def toFinishedPacket() : FinishedPacket =
+      if isReply
+      then 
+        val last3Reader = CheckedReader(last3.toArray)
+        rawpacket.Reply(
+          length = readLength(),
+          id = readID(),
+          flags = last3Reader.read_int8,
+          errorCode = last3Reader.read_int16,
+          data = body
+        )
+      else
+        val last3Reader = CheckedReader(last3.toArray)
+        rawpacket.Command(
+          length = readLength(),
+          id = readID(),
+          flags = last3Reader.read_int8,
+          commandSet = last3Reader.read_int8,
+          command = last3Reader.read_int8,
+          data = body
+        )
+    
+    def flags : Byte = last3(0)
+    def isReply : Boolean = (flags & 0x80) > 0
+    def isCommand : Boolean = !isReply
+
+    def readLength() : Int = CheckedReader(length.toArray).read_int32
+    def readID() : Int = CheckedReader(id.toArray).read_int32
+  }
+
+  class FinishedPacket
+  class Command(
+    val length: Int,
+    val id: Int,
+    val flags: Byte,
+    val commandSet: Byte,
+    val command: Byte,
+    val data: ArrayBuffer[Byte]
+  ) extends FinishedPacket
+  class Reply(
+    val length: Int,
+    val id: Int,
+    val flags: Byte,
+    val errorCode: Short,
+    val data: ArrayBuffer[Byte]
+  ) extends FinishedPacket
+
+class PacketParser {
+  enum State:
+    case HeaderLength()
+    case HeaderID()
+    case HeaderLast3()
+    case Body()
+    case Done()
+  
+  private def startState : State = State.HeaderLength()
+
+  private var state = startState
+  private var builder = rawpacket.PacketBuilder() 
+
+  private case class ParseResult(nextState: State, remaining: Array[Byte])
+  
+  private def parseLength(buffer: Array[Byte]) : ParseResult =
+    var remaining = 4 - builder.length.length
+    val checkedReader = CheckedReader(buffer)
+    while remaining > 0 do
+      builder.length += checkedReader.read_int8
+      remaining -= 1
+
+    ParseResult(
+      nextState = if builder.length.length == 4 then State.HeaderID() else State.HeaderLength(),
+      remaining = buffer.slice(remaining, buffer.length)
+    )
+
+  private def parseId(buffer: Array[Byte]) : ParseResult =
+    var remaining = 4 - builder.id.length
+    val checkedReader = CheckedReader(buffer)
+    while remaining > 0 do
+      builder.id += checkedReader.read_int8
+      remaining -= 1
+
+    ParseResult(
+      nextState = if builder.id.length == 4 then State.HeaderLast3() else State.HeaderID(),
+      remaining = buffer.slice(remaining, buffer.length)
+    )
+
+  private def parseLast3(buffer: Array[Byte]) : ParseResult =
+    var remaining = 3 - builder.last3.length
+    val checkedReader = CheckedReader(buffer)
+    while remaining > 0 do
+      builder.last3 += checkedReader.read_int8
+      remaining -= 1
+
+    ParseResult(
+      nextState = if builder.last3.length == 3 then State.Body() else State.HeaderLast3(),
+      remaining = buffer.slice(remaining, buffer.length)
+    )
+  
+  private def parseBody(buffer: Array[Byte]) : ParseResult =
+    var remaining = builder.readLength() - builder.length.length
+    val checkedReader = CheckedReader(buffer)
+    while remaining > 0 do
+      builder.body += checkedReader.read_int8
+      remaining -= 1
+
+    ParseResult(
+      nextState = if builder.body.length == builder.readLength() then State.Done() else State.Body(),
+      remaining = buffer.slice(remaining, buffer.length)
+    )
+
+  private def unreachable[T] : T = throw RuntimeException("unreachable")
+
+  private def parse(buffer: Array[Byte]) : ParseResult =
+    state match
+      case _ : State.HeaderLength => parseLength(buffer)
+      case _ : State.HeaderID => parseId(buffer)
+      case _ : State.HeaderLast3 => parseLast3(buffer)
+      case _ : State.Body => parseBody(buffer)
+      case _ : State.Done => unreachable
+
+  @tailrec
+  private def consume(buffer: Array[Byte], completed: List[rawpacket.FinishedPacket]) : List[rawpacket.FinishedPacket] =
+    parse(buffer) match
+      case ParseResult(State.Done(), remaining) =>
+        state = startState
+        completed :+ builder.toFinishedPacket()
+        consume(remaining, completed)
+      case ParseResult(nextState, remaining) =>
+        state = nextState
+        completed
+
+  def consume(buffer: Array[Byte]) : List[rawpacket.FinishedPacket] = consume(buffer, List())
 }
 
 object JdwpProxy {
