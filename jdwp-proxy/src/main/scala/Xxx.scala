@@ -14,6 +14,8 @@ import scala.annotation.tailrec
 import scala.collection.mutable.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 import luceedebug.jdwp_proxy.JdwpProxy.IProxyClient
+import java.net.ServerSocket
+import luceedebug.jdwp_proxy.ISocketIO.chunkedReader
 
 enum Foo:
   case X(v: Any)
@@ -30,13 +32,6 @@ abstract class ISocketIO {
   def chunkedReader(chunkSize: Int) : () => Array[Byte]
   def write(bytes: Array[Byte], timeout_ms: Int) : Unit
   def read(n: Int, timeout_ms: Int) : Unit
-}
-
-class PoisonSocketIO extends ISocketIO {
-  private def die() = throw new RuntimeException("call to PoisonSocketIO")
-  def chunkedReader(chunkSize: Int) = die()
-  def write(bytes: Array[Byte], timeout_ms: Int) = die()
-  def read(n: Int, timeout_ms: Int) = die()
 }
 
 class SocketIO(private val inStream: InputStream, private val outStream: OutputStream) extends ISocketIO {
@@ -123,92 +118,169 @@ class CheckedReader(raw: Array[Byte]) {
       | (span(3) << 0)
 }
 
-class JdwpProxyManager {
+class LuceeDebugJdwpProxy(
+  jdwpHost: String,
+  jdwpPort: Int,
+  luceeClientHost: String,
+  luceeClientPort: Int,
+  jvmClientHost: String,
+  jvmClientPort: Int
+) {
+  val proxyManager = JdwpProxyManager(jdwpHost, jdwpPort)
+
+  enum ConnectionState:
+    case Connected(client: ClientFacingProxyClient)
+    case Listening(client: Future[ClientFacingProxyClient])
+  import ConnectionState._
+  
+  // TODO: heed the warning, this isn't good to use for our use case
+  implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
+  
+  var lucee : ConnectionState = Listening({
+    val future = Future { proxyManager.listenOn(luceeClientHost, luceeClientPort) }
+    future.onComplete(v => {
+      v match
+        case Success(client) => { lucee = Connected(client) }
+        case Failure(e) => throw e
+    })
+    future
+  })
+
+  var java : ConnectionState = Listening({
+    val future = Future { proxyManager.listenOn(jvmClientHost, jvmClientPort) }
+    future.onComplete(v => {
+      v match
+        case Success(client) => { java = Connected(client) }
+        case Failure(e) => throw e
+    })
+    future
+  })
+}
+
+class JdwpProxyManager(jvmHost: String, jvmPort: Int) {
   // jvm conn
   // listen for client conns, on ports ...
   // manage client conn state
   // receive client packet, forward to jvm
   // receive jvm packet, forward to client
+
+  private val proxy = new JdwpProxy(jvmHost, jvmPort)
+
+  def listenOn(host: String, port: Int) : ClientFacingProxyClient =
+    val socket = {
+      val socket = new ServerSocket()
+      val inetAddr = new InetSocketAddress(host, port);
+      socket.bind(inetAddr)
+      socket.accept()
+    }
+    proxy.createAndRegisterClient(socket)
+
 }
 
-abstract class IProxyClient {
-  val id: Int
-  def sendToLeft(bytes: Array[Byte]) : Unit;
-  def sendToRight(bytes: Array[Byte]) : Unit;
-  def receiveFromLeft(bytes: Array[Byte]): Unit;
-  def receiveFromRight(bytes: Array[Byte]) : Unit;
-}
-
-class ProxyClient(
+class ClientFacingProxyClient(
   val id: Int,
-  val leftIO: ISocketIO,
-  val rightIO: ISocketIO,
-  val onReceiveFromLeft: Array[Byte] => Unit,
-  val onReceiveFromRight: Array[Byte] => Unit,
-) extends IProxyClient {
-  def sendToLeft(bytes: Array[Byte]) : Unit =
-    leftIO.write(bytes, 5000)
-  def sendToRight(bytes: Array[Byte]) : Unit =
-    rightIO.write(bytes, 5000)
-  def receiveFromLeft(bytes: Array[Byte]) : Unit = 
-    onReceiveFromLeft(bytes)
-  def receiveFromRight(bytes: Array[Byte]) : Unit = 
-    onReceiveFromRight(bytes)
+  val io: ISocketIO,
+  val receiveFromClient: Array[Byte] => Unit,
+  val receiveFromJVM: Array[Byte] => Unit,
+) {
+  private val thread = {
+    val thread = new Thread(() => {
+      val reader = io.chunkedReader(1024)
+      while true do
+        receiveFromClient(reader())
+    })
+    thread.start()
+    thread
+  }
+}
+
+class JvmFacingProxyClient(
+  val id: Int,
+  val io: ISocketIO,
+  val receiveFromJVM: Array[Byte] => Unit,
+  val receiveFromClient: (ClientFacingProxyClient, rawpacket.FinishedPacket) => Unit,
+) {
+  private val thread = {
+    val thread = new Thread(() => {
+      val reader = io.chunkedReader(1024)
+      while true do
+        receiveFromJVM(reader())
+    })
+    thread.start()
+    thread
+  }
 }
 
 class JdwpProxy(host: String, port: Int) {
-  class PacketOrigin(val originalID: Int, val client: ProxyClient)
+  class PacketOrigin(val originalID: Int, val client: ClientFacingProxyClient)
 
   private val nextClientID = AtomicInteger()
   private val jvmSocketIO = JdwpProxy.getSocketIOFromHandshake(host, port)
-  private val jvm : ProxyClient = {
+  private val jvm : JvmFacingProxyClient = {
     val parser = PacketParser()
-    ProxyClient(
+    JvmFacingProxyClient(
       id = nextClientID.getAndIncrement(),
-      leftIO = PoisonSocketIO(),
-      rightIO = jvmSocketIO,
-      onReceiveFromLeft = (_: Array[Byte]) => {},
-      onReceiveFromRight = bytes => {
+      io = jvmSocketIO,
+      receiveFromJVM = bytes => {
         for (packet <- parser.consume(bytes)) do
           packet match
             case packet : rawpacket.Command =>
               for ((_, client) <- clients_) do
-                client.onReceiveFromRight(packet.raw)
+                client.receiveFromJVM(packet.raw)
             case packet : rawpacket.Reply =>
               commandsAwaitingReply_.get(packet.ID) match
-                case Some(origin) => packet.withSwappedID(origin.originalID, packet => origin.client.onReceiveFromRight(packet.raw))
+                case Some(origin) => packet.withSwappedID(origin.originalID, packet => origin.client.receiveFromJVM(packet.raw))
                 case None => () // ??
+      },
+      receiveFromClient = (client, packet) => {
+
       }
     )
   }
 
-  private val clients_ = HashMap[Int, ProxyClient]()
+  private val clients_ = HashMap[Int, ClientFacingProxyClient]()
   private val commandsAwaitingReply_ = HashMap[Int, PacketOrigin]()
 
-  new Thread(() => {
-    val readChunk = jvmSocketIO.chunkedReader(1024)
-    while true do {
-      jvm.receiveFromRight(readChunk())
-    }
-  })
-
   def createAndRegisterClient(
-    leftIO: ISocketIO,
-    rightIO: ISocketIO,
-    onReceiveFromLeft: Array[Byte] => Unit,
-    onReceiveFromRight: Array[Byte] => Unit,
-  ) : IProxyClient =
-    val client = ProxyClient(
+    clientSocket: Socket,
+  ) : ClientFacingProxyClient =
+    val socketIO = SocketIO(clientSocket.getInputStream(), clientSocket.getOutputStream())
+    val parser = PacketParser()
+    val client : ClientFacingProxyClient = ClientFacingProxyClient(
       id = nextClientID.getAndIncrement(),
-      leftIO = leftIO,
-      rightIO = rightIO,
-      onReceiveFromLeft = onReceiveFromLeft,
-      onReceiveFromRight = onReceiveFromRight
+      io = socketIO,
+      receiveFromClient = bytes => {
+        for (packet <- parser.consume(bytes)) do
+          jvm.receiveFromClient(client, packet)
+      },
+      receiveFromJVM = bytes => socketIO.write(bytes, /*ms*/5000)
     )
     clients_.put(client.id, client)
     client
 
-  def unregisterClient(client: IProxyClient) : Unit = clients_.remove(client.id) 
+  def unregisterClient(client: ClientFacingProxyClient) : Unit = clients_.remove(client.id)
+}
+
+object JdwpProxy {
+  private val HANDSHAKE_STRING: String = "JDWP-Handshake"
+  private val HANDSHAKE_BYTES: Array[Byte] = HANDSHAKE_STRING.getBytes(StandardCharsets.US_ASCII)
+  
+  @throws(classOf[IOException])
+  private def getSocketIOFromHandshake(host: String, port: Int) : SocketIO =
+    val socket = new Socket()
+    val inetAddr = new InetSocketAddress(host, port);
+    socket.connect(inetAddr, /*ms*/5000);
+    val socketIO = SocketIO(socket.getInputStream(), socket.getOutputStream())
+    
+    socketIO.write(HANDSHAKE_BYTES, 1000)
+    val handshakeIn = socketIO.read(HANDSHAKE_STRING.length, 5000)
+    val receivedHandshake = String(CheckedReader(handshakeIn).readN(HANDSHAKE_STRING.length), StandardCharsets.UTF_8)
+
+    // do the "size" message first?
+
+    if receivedHandshake.equals(HANDSHAKE_STRING)
+    then socketIO
+    else throw new IOException(s"Bad JDWP handshake, got '${receivedHandshake}'")
 }
 
 package rawpacket:
@@ -389,26 +461,6 @@ class PacketParser {
         completed
 
   def consume(buffer: Array[Byte]) : List[rawpacket.FinishedPacket] = consume(buffer, List())
-}
-
-object JdwpProxy {
-  private val HANDSHAKE_STRING: String = "JDWP-Handshake"
-  private val HANDSHAKE_BYTES: Array[Byte] = HANDSHAKE_STRING.getBytes(StandardCharsets.US_ASCII)
-  
-  @throws(classOf[IOException])
-  private def getSocketIOFromHandshake(host: String, port: Int) : SocketIO =
-    val socket = new Socket()
-    val inetAddr = new InetSocketAddress(host, port);
-    socket.connect(inetAddr, /*ms*/5000);
-    val socketIO = SocketIO(socket.getInputStream(), socket.getOutputStream())
-    
-    socketIO.write(HANDSHAKE_BYTES, 1000)
-    val handshakeIn = socketIO.read(HANDSHAKE_STRING.length, 5000)
-    val receivedHandshake = String(CheckedReader(handshakeIn).readN(HANDSHAKE_STRING.length), StandardCharsets.UTF_8)
-
-    if receivedHandshake.equals(HANDSHAKE_STRING)
-    then socketIO
-    else throw new IOException(s"Bad JDWP handshake, got '${receivedHandshake}'")
 }
 
 class JdwpPacket {}
