@@ -11,6 +11,9 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.*
 import scala.util.{Failure, Success, Try}
 import scala.annotation.tailrec
+import scala.collection.mutable.HashMap
+import java.util.concurrent.atomic.AtomicInteger
+import luceedebug.jdwp_proxy.JdwpProxy.IProxyClient
 
 enum Foo:
   case X(v: Any)
@@ -18,10 +21,25 @@ enum Foo:
 
 @main
 def ok() : Unit =
-  JdwpProxy().connect("localhost", 9999)//println(CheckedReader("xpabx".getBytes(StandardCharsets.UTF_8)).readUtf8("xpab"))
+  val x = new Array[Byte](5)
+  println(x.slice(0,45)(5));
+  //JdwpProxy().connect("localhost", 9999)//println(CheckedReader("xpabx".getBytes(StandardCharsets.UTF_8)).readUtf8("xpab"))
 
 
-class SocketIO(private val inStream: InputStream, private val outStream: OutputStream) {
+abstract class ISocketIO {
+  def chunkedReader(chunkSize: Int) : () => Array[Byte]
+  def write(bytes: Array[Byte], timeout_ms: Int) : Unit
+  def read(n: Int, timeout_ms: Int) : Unit
+}
+
+class PoisonSocketIO extends ISocketIO {
+  private def die() = throw new RuntimeException("call to PoisonSocketIO")
+  def chunkedReader(chunkSize: Int) = die()
+  def write(bytes: Array[Byte], timeout_ms: Int) = die()
+  def read(n: Int, timeout_ms: Int) = die()
+}
+
+class SocketIO(private val inStream: InputStream, private val outStream: OutputStream) extends ISocketIO {
   private implicit val executionContext : ExecutionContext = ExecutionContext.fromExecutor(
     Executors.newFixedThreadPool(3)
   )
@@ -46,51 +64,45 @@ class SocketIO(private val inStream: InputStream, private val outStream: OutputS
       else bytes
 }
 
-class Span(private val buffer: Array[Byte], private val offset: Int, private val xlength: Int)
-extends Iterator[Byte]
-{
-    if offset + xlength > buffer.length then
-      throw new RuntimeException(s"Out of bounds span (bufferSize=${buffer.length}, offset=${offset}, length=${xlength})")
-    if offset < 0 then
-      throw new RuntimeException("Illegal negative offset for Span")
-    if xlength < 0 then
-      throw new RuntimeException("Illegal negative length for Span")
+// class Span(private val buffer: Array[Byte], private val offset: Int, private val xlength: Int)
+// extends Iterator[Byte]
+// {
+//     if offset + xlength > buffer.length then
+//       throw new RuntimeException(s"Out of bounds span (bufferSize=${buffer.length}, offset=${offset}, length=${xlength})")
+//     if offset < 0 then
+//       throw new RuntimeException("Illegal negative offset for Span")
+//     if xlength < 0 then
+//       throw new RuntimeException("Illegal negative length for Span")
 
-    private var index : Int = 0
+//     private var index : Int = 0
 
-    def apply(i: Int) : Byte =
-      if i >= xlength then throw new RuntimeException(s"Out of bounds apply access (bufferSize=${buffer.length}, offset=${offset}, length=${xlength}, i=${i})")
-      buffer(offset + i)
+//     def apply(i: Int) : Byte =
+//       if i >= xlength then throw new RuntimeException(s"Out of bounds apply access (bufferSize=${buffer.length}, offset=${offset}, length=${xlength}, i=${i})")
+//       buffer(offset + i)
 
-    def hasNext() : Boolean = index < xlength
-    def next() : Byte =
-      val b = buffer(offset + index)
-      index += 1
-      b
+//     def hasNext() : Boolean = index < xlength
+//     def next() : Byte =
+//       val b = buffer(offset + index)
+//       index += 1
+//       b
 
-    private def toByteArray: Array[Byte] = buffer.slice(offset, offset + xlength)
-    // could start in the middle of a multibyte codepoint ...
-    def toStringFromUtf8 : String = String(toByteArray, StandardCharsets.UTF_8)
-}
+//     def toByteArray: Array[Byte] = buffer.slice(offset, offset + xlength)
+//     // could start in the middle of a multibyte codepoint ...
+//     def toStringFromUtf8 : String = String(toByteArray, StandardCharsets.UTF_8)
+// }
 
 // java is big endian, network is big endian
-class CheckedReader(private val raw: Array[Byte]) {
+class CheckedReader(raw: Array[Byte]) {
   private var index : Int = 0
 
-  private def getAndAdvance(len: Int) : Span =
-    val ret = Span(raw, index, len)
+  private def getAndAdvance(len: Int) : Array[Byte] =
+    if index + len >= raw.length
+    then throw new RuntimeException("out of bounds buffer access")
+    val ret = raw.slice(index, index + len)
     index += len
     ret
 
-  def readUtf8(s: String) : String =
-    val bytes = s.getBytes(StandardCharsets.UTF_8)
-    val span = Span(raw, index, bytes.length)
-    for (i <- 0 until bytes.length) {
-      val expected = bytes(i)
-      val actual = span(i)
-      if expected != actual then throw new RuntimeException(s"Expected: `${s}`, actual: `${span.toStringFromUtf8}`")
-    }
-    s
+  def readN(n: Int) : Array[Byte] = getAndAdvance(n)
 
   def read_int8: Byte =
     val span = getAndAdvance(1)
@@ -111,29 +123,92 @@ class CheckedReader(private val raw: Array[Byte]) {
       | (span(3) << 0)
 }
 
-class JdwpProxy {
-  def connect(host: String, port: Int) : Unit =
-    val socket = new Socket()
-    val inetAddr = new InetSocketAddress(host, port);
-    socket.connect(inetAddr, /*ms*/5000);
-    val (inStream, outStream) = (socket.getInputStream(), socket.getOutputStream())
-    val socketIO = SocketIO(inStream, outStream)
+class JdwpProxyManager {
+  // jvm conn
+  // listen for client conns, on ports ...
+  // manage client conn state
+  // receive client packet, forward to jvm
+  // receive jvm packet, forward to client
+}
 
-    new Thread(() => messagePump(socketIO)).start()
+abstract class IProxyClient {
+  val id: Int
+  def sendToLeft(bytes: Array[Byte]) : Unit;
+  def sendToRight(bytes: Array[Byte]) : Unit;
+  def receiveFromLeft(bytes: Array[Byte]): Unit;
+  def receiveFromRight(bytes: Array[Byte]) : Unit;
+}
 
-  def messagePump(socketIO: SocketIO) : Unit =
-    socketIO.write(HANDSHAKE_BYTES, 1000)
-    val handshakeIn = socketIO.read(HANDSHAKE_STRING.length, 5000)
-    CheckedReader(handshakeIn).readUtf8(HANDSHAKE_STRING)
+class ProxyClient(
+  val id: Int,
+  val leftIO: ISocketIO,
+  val rightIO: ISocketIO,
+  val onReceiveFromLeft: Array[Byte] => Unit,
+  val onReceiveFromRight: Array[Byte] => Unit,
+) extends IProxyClient {
+  def sendToLeft(bytes: Array[Byte]) : Unit =
+    leftIO.write(bytes, 5000)
+  def sendToRight(bytes: Array[Byte]) : Unit =
+    rightIO.write(bytes, 5000)
+  def receiveFromLeft(bytes: Array[Byte]) : Unit = 
+    onReceiveFromLeft(bytes)
+  def receiveFromRight(bytes: Array[Byte]) : Unit = 
+    onReceiveFromRight(bytes)
+}
 
-    val readChunk = socketIO.chunkedReader(1024)
+class JdwpProxy(host: String, port: Int) {
+  class PacketOrigin(val originalID: Int, val client: ProxyClient)
+
+  private val nextClientID = AtomicInteger()
+  private val jvmSocketIO = JdwpProxy.getSocketIOFromHandshake(host, port)
+  private val jvm : ProxyClient = {
     val parser = PacketParser()
+    ProxyClient(
+      id = nextClientID.getAndIncrement(),
+      leftIO = PoisonSocketIO(),
+      rightIO = jvmSocketIO,
+      onReceiveFromLeft = (_: Array[Byte]) => {},
+      onReceiveFromRight = bytes => {
+        for (packet <- parser.consume(bytes)) do
+          packet match
+            case packet : rawpacket.Command =>
+              for ((_, client) <- clients_) do
+                client.onReceiveFromRight(packet.raw)
+            case packet : rawpacket.Reply =>
+              commandsAwaitingReply_.get(packet.ID) match
+                case Some(origin) => packet.withSwappedID(origin.originalID, packet => origin.client.onReceiveFromRight(packet.raw))
+                case None => () // ??
+      }
+    )
+  }
 
+  private val clients_ = HashMap[Int, ProxyClient]()
+  private val commandsAwaitingReply_ = HashMap[Int, PacketOrigin]()
+
+  new Thread(() => {
+    val readChunk = jvmSocketIO.chunkedReader(1024)
     while true do {
-      // parser.consume(readChunk()) match
-      //   case Some(packet) => 0
-      //   case None => 0
+      jvm.receiveFromRight(readChunk())
     }
+  })
+
+  def createAndRegisterClient(
+    leftIO: ISocketIO,
+    rightIO: ISocketIO,
+    onReceiveFromLeft: Array[Byte] => Unit,
+    onReceiveFromRight: Array[Byte] => Unit,
+  ) : IProxyClient =
+    val client = ProxyClient(
+      id = nextClientID.getAndIncrement(),
+      leftIO = leftIO,
+      rightIO = rightIO,
+      onReceiveFromLeft = onReceiveFromLeft,
+      onReceiveFromRight = onReceiveFromRight
+    )
+    clients_.put(client.id, client)
+    client
+
+  def unregisterClient(client: IProxyClient) : Unit = clients_.remove(client.id) 
 }
 
 package rawpacket:
@@ -141,7 +216,8 @@ package rawpacket:
     val length = new ArrayBuffer[Byte](4)
     val id = new ArrayBuffer[Byte](4)
     val last3 = new ArrayBuffer[Byte](3)
-    val body = new ArrayBuffer[Byte]
+    val body = new ArrayBuffer[Byte](64)
+    val raw = new ArrayBuffer[Byte](64)
 
     def toFinishedPacket() : FinishedPacket =
       if isReply
@@ -152,7 +228,8 @@ package rawpacket:
           id = readID(),
           flags = last3Reader.read_int8,
           errorCode = last3Reader.read_int16,
-          data = body
+          data = body.toArray,
+          raw = raw.toArray
         )
       else
         val last3Reader = CheckedReader(last3.toArray)
@@ -162,7 +239,8 @@ package rawpacket:
           flags = last3Reader.read_int8,
           commandSet = last3Reader.read_int8,
           command = last3Reader.read_int8,
-          data = body
+          data = body.toArray,
+          raw = raw.toArray
         )
     
     def flags : Byte = last3(0)
@@ -173,22 +251,55 @@ package rawpacket:
     def readID() : Int = CheckedReader(id.toArray).read_int32
   }
 
-  class FinishedPacket
+  sealed abstract class FinishedPacket {
+    protected var id_ : Int;
+    protected var raw_ : Array[Byte];
+
+    def withSwappedID(newID: Int, f: FinishedPacket => Unit) : Unit = this.synchronized {
+      val savedID = ID
+      try {
+        setID(newID)
+        f(this)
+      }
+      finally {
+        setID(savedID)
+      }
+    }
+    
+    def ID : Int = id_
+    def raw : Array[Byte] = raw_
+
+    private def setID(v: Int) : Unit =
+      id_ = v
+      raw_(0) = ((v & 0xFF000000) >> 24).asInstanceOf[Byte]
+      raw_(1) = ((v & 0x00FF0000) >> 16).asInstanceOf[Byte]
+      raw_(2) = ((v & 0x0000FF00) >> 8).asInstanceOf[Byte]
+      raw_(3) = ((v & 0x000000FF) >> 0).asInstanceOf[Byte]
+      
+  }
   class Command(
     val length: Int,
-    val id: Int,
+    id: Int,
     val flags: Byte,
     val commandSet: Byte,
     val command: Byte,
-    val data: ArrayBuffer[Byte]
-  ) extends FinishedPacket
+    val data: Array[Byte],
+    raw: Array[Byte]
+  ) extends FinishedPacket {
+    protected var id_ = id
+    protected var raw_ = raw
+  }
   class Reply(
     val length: Int,
-    val id: Int,
+    id: Int,
     val flags: Byte,
     val errorCode: Short,
-    val data: ArrayBuffer[Byte]
-  ) extends FinishedPacket
+    val data: Array[Byte],
+    raw: Array[Byte]
+  ) extends FinishedPacket {
+    protected var id_ = id
+    protected var raw_ = raw
+  }
 
 class PacketParser {
   enum State:
@@ -204,12 +315,16 @@ class PacketParser {
   private var builder = rawpacket.PacketBuilder() 
 
   private case class ParseResult(nextState: State, remaining: Array[Byte])
+
+  private def pushByte(builderTarget: ArrayBuffer[Byte], byte: Byte) : Unit =
+    builderTarget += byte
+    builder.raw += byte
   
   private def parseLength(buffer: Array[Byte]) : ParseResult =
     var remaining = 4 - builder.length.length
     val checkedReader = CheckedReader(buffer)
     while remaining > 0 do
-      builder.length += checkedReader.read_int8
+      pushByte(builder.length, checkedReader.read_int8)
       remaining -= 1
 
     ParseResult(
@@ -221,7 +336,7 @@ class PacketParser {
     var remaining = 4 - builder.id.length
     val checkedReader = CheckedReader(buffer)
     while remaining > 0 do
-      builder.id += checkedReader.read_int8
+      pushByte(builder.id, checkedReader.read_int8)
       remaining -= 1
 
     ParseResult(
@@ -233,7 +348,7 @@ class PacketParser {
     var remaining = 3 - builder.last3.length
     val checkedReader = CheckedReader(buffer)
     while remaining > 0 do
-      builder.last3 += checkedReader.read_int8
+      pushByte(builder.last3, checkedReader.read_int8)
       remaining -= 1
 
     ParseResult(
@@ -245,7 +360,7 @@ class PacketParser {
     var remaining = builder.readLength() - builder.length.length
     val checkedReader = CheckedReader(buffer)
     while remaining > 0 do
-      builder.body += checkedReader.read_int8
+      pushByte(builder.body, checkedReader.read_int8)
       remaining -= 1
 
     ParseResult(
@@ -268,8 +383,7 @@ class PacketParser {
     parse(buffer) match
       case ParseResult(State.Done(), remaining) =>
         state = startState
-        completed :+ builder.toFinishedPacket()
-        consume(remaining, completed)
+        consume(remaining, completed :+ builder.toFinishedPacket())
       case ParseResult(nextState, remaining) =>
         state = nextState
         completed
@@ -280,6 +394,21 @@ class PacketParser {
 object JdwpProxy {
   private val HANDSHAKE_STRING: String = "JDWP-Handshake"
   private val HANDSHAKE_BYTES: Array[Byte] = HANDSHAKE_STRING.getBytes(StandardCharsets.US_ASCII)
+  
+  @throws(classOf[IOException])
+  private def getSocketIOFromHandshake(host: String, port: Int) : SocketIO =
+    val socket = new Socket()
+    val inetAddr = new InetSocketAddress(host, port);
+    socket.connect(inetAddr, /*ms*/5000);
+    val socketIO = SocketIO(socket.getInputStream(), socket.getOutputStream())
+    
+    socketIO.write(HANDSHAKE_BYTES, 1000)
+    val handshakeIn = socketIO.read(HANDSHAKE_STRING.length, 5000)
+    val receivedHandshake = String(CheckedReader(handshakeIn).readN(HANDSHAKE_STRING.length), StandardCharsets.UTF_8)
+
+    if receivedHandshake.equals(HANDSHAKE_STRING)
+    then socketIO
+    else throw new IOException(s"Bad JDWP handshake, got '${receivedHandshake}'")
 }
 
 class JdwpPacket {}
