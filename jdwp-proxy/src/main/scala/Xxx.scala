@@ -15,7 +15,6 @@ import scala.collection.mutable.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 import luceedebug.jdwp_proxy.JdwpProxy.IProxyClient
 import java.net.ServerSocket
-import luceedebug.jdwp_proxy.ISocketIO.chunkedReader
 
 enum Foo:
   case X(v: Any)
@@ -39,7 +38,7 @@ class SocketIO(private val inStream: InputStream, private val outStream: OutputS
     Executors.newFixedThreadPool(3)
   )
 
-  def chunkedReader(chunkSize: Int) = {
+  def chunkedReader(chunkSize: Int) : () => Array[Byte] = {
     val buffer = new Array[Byte](chunkSize);
     () => {
       val readSize = inStream.read(buffer)
@@ -58,33 +57,6 @@ class SocketIO(private val inStream: InputStream, private val outStream: OutputS
       then throw new IOException(s"Expected ${n} bytes but read ${bytes.length}")
       else bytes
 }
-
-// class Span(private val buffer: Array[Byte], private val offset: Int, private val xlength: Int)
-// extends Iterator[Byte]
-// {
-//     if offset + xlength > buffer.length then
-//       throw new RuntimeException(s"Out of bounds span (bufferSize=${buffer.length}, offset=${offset}, length=${xlength})")
-//     if offset < 0 then
-//       throw new RuntimeException("Illegal negative offset for Span")
-//     if xlength < 0 then
-//       throw new RuntimeException("Illegal negative length for Span")
-
-//     private var index : Int = 0
-
-//     def apply(i: Int) : Byte =
-//       if i >= xlength then throw new RuntimeException(s"Out of bounds apply access (bufferSize=${buffer.length}, offset=${offset}, length=${xlength}, i=${i})")
-//       buffer(offset + i)
-
-//     def hasNext() : Boolean = index < xlength
-//     def next() : Byte =
-//       val b = buffer(offset + index)
-//       index += 1
-//       b
-
-//     def toByteArray: Array[Byte] = buffer.slice(offset, offset + xlength)
-//     // could start in the middle of a multibyte codepoint ...
-//     def toStringFromUtf8 : String = String(toByteArray, StandardCharsets.UTF_8)
-// }
 
 // java is big endian, network is big endian
 class CheckedReader(raw: Array[Byte]) {
@@ -126,35 +98,58 @@ class LuceeDebugJdwpProxy(
   jvmClientHost: String,
   jvmClientPort: Int
 ) {
-  val proxyManager = JdwpProxyManager(jdwpHost, jdwpPort)
+  private val proxy = new JdwpProxy(jdwpHost, jdwpPort)
 
   enum ConnectionState:
     case Connected(client: ClientFacingProxyClient)
     case Listening(client: Future[ClientFacingProxyClient])
   import ConnectionState._
+
+  private def listenOn(host: String, port: Int) : Socket = 
+    val socket = new ServerSocket()
+    val inetAddr = new InetSocketAddress(host, port);
+    socket.bind(inetAddr)
+    socket.accept()
   
   // TODO: heed the warning, this isn't good to use for our use case
   implicit val ec: scala.concurrent.ExecutionContext = scala.concurrent.ExecutionContext.global
   
-  var lucee : ConnectionState = Listening({
-    val future = Future { proxyManager.listenOn(luceeClientHost, luceeClientPort) }
-    future.onComplete(v => {
-      v match
-        case Success(client) => { lucee = Connected(client) }
-        case Failure(e) => throw e
+  var lucee = connectLucee()
+  var java = connectJava()
+  
+  private def connectLucee() : ConnectionState =
+    Listening({
+      val future = Future {
+        val socket = listenOn(luceeClientHost, luceeClientPort)
+        proxy.createAndRegisterClient(
+          socket,
+          () => connectLucee()
+        )
+      }
+      future.onComplete(v => {
+        v match
+          case Success(client) => { lucee = Connected(client) }
+          case Failure(e) => throw e
+      })
+      future
     })
-    future
-  })
 
-  var java : ConnectionState = Listening({
-    val future = Future { proxyManager.listenOn(jvmClientHost, jvmClientPort) }
-    future.onComplete(v => {
-      v match
-        case Success(client) => { java = Connected(client) }
-        case Failure(e) => throw e
+  private def connectJava() : ConnectionState =
+    Listening({
+      val future = Future {
+        val socket = listenOn(jvmClientHost, jvmClientPort)
+        proxy.createAndRegisterClient(
+          socket,
+          () => connectJava()
+        )
+      }
+      future.onComplete(v => {
+        v match
+          case Success(client) => { java = Connected(client) }
+          case Failure(e) => throw e
+      })
+      future
     })
-    future
-  })
 }
 
 class JdwpProxyManager(jvmHost: String, jvmPort: Int) {
@@ -163,18 +158,6 @@ class JdwpProxyManager(jvmHost: String, jvmPort: Int) {
   // manage client conn state
   // receive client packet, forward to jvm
   // receive jvm packet, forward to client
-
-  private val proxy = new JdwpProxy(jvmHost, jvmPort)
-
-  def listenOn(host: String, port: Int) : ClientFacingProxyClient =
-    val socket = {
-      val socket = new ServerSocket()
-      val inetAddr = new InetSocketAddress(host, port);
-      socket.bind(inetAddr)
-      socket.accept()
-    }
-    proxy.createAndRegisterClient(socket)
-
 }
 
 class ClientFacingProxyClient(
@@ -182,6 +165,7 @@ class ClientFacingProxyClient(
   val io: ISocketIO,
   val receiveFromClient: Array[Byte] => Unit,
   val receiveFromJVM: Array[Byte] => Unit,
+  val onClientDisconnect : () => Unit,
 ) {
   private val thread = {
     val thread = new Thread(() => {
@@ -243,6 +227,7 @@ class JdwpProxy(host: String, port: Int) {
 
   def createAndRegisterClient(
     clientSocket: Socket,
+    onClientDisconnect: () => Unit,
   ) : ClientFacingProxyClient =
     val socketIO = SocketIO(clientSocket.getInputStream(), clientSocket.getOutputStream())
     val parser = PacketParser()
@@ -253,7 +238,8 @@ class JdwpProxy(host: String, port: Int) {
         for (packet <- parser.consume(bytes)) do
           jvm.receiveFromClient(client, packet)
       },
-      receiveFromJVM = bytes => socketIO.write(bytes, /*ms*/5000)
+      receiveFromJVM = bytes => socketIO.write(bytes, /*ms*/5000),
+      onClientDisconnect = onClientDisconnect
     )
     clients_.put(client.id, client)
     client
