@@ -48,7 +48,13 @@ class SocketIO(private val inStream: InputStream, private val outStream: OutputS
 
   def write(bytes: Array[Byte], timeout_ms: Int) : Unit =
     val duration = Duration(timeout_ms, MILLISECONDS)
-    Await.result(Future { outStream.write(bytes) }, duration)
+    Await.result(
+      Future {
+        outStream.write(bytes)
+        outStream.flush()
+      },
+      duration
+    )
 
   def read(n: Int, timeout_ms: Int) : Array[Byte] =
     val duration = Duration(timeout_ms, MILLISECONDS)
@@ -295,9 +301,9 @@ object JdwpProxy {
       import packet.reply.IdSizes
       while true do
         for (packet <- parser.consume(chunkedReader())) do
-          if packet.ID == 0
+          if packet.isInstanceOf[rawpacket.Reply] && packet.ID == 0
           then
-            idSizes = Some(IdSizes.fromWire(packet.raw))
+            idSizes = Some(IdSizes.fromWire(packet.data))
             break
           else parsed += packet
     }
@@ -347,8 +353,10 @@ package rawpacket:
   }
 
   sealed abstract class FinishedPacket {
-    protected var id_ : Int;
-    protected var raw_ : Array[Byte];
+    protected var id_ : Int
+    protected var flags_ : Byte
+    protected var data_ : Array[Byte]
+    protected var raw_ : Array[Byte]
 
     def withSwappedID(newID: Int, f: FinishedPacket => Unit) : Unit = this.synchronized {
       val savedID = ID
@@ -362,6 +370,8 @@ package rawpacket:
     }
     
     def ID : Int = id_
+    def flags : Byte = flags_
+    def data : Array[Byte] = data_
     def raw : Array[Byte] = raw_
 
     private def setID(v: Int) : Unit =
@@ -375,24 +385,28 @@ package rawpacket:
   class Command(
     val length: Int,
     id: Int,
-    val flags: Byte,
+    flags: Byte,
     val commandSet: Byte,
     val command: Byte,
-    val data: Array[Byte],
+    data: Array[Byte],
     raw: Array[Byte]
   ) extends FinishedPacket {
     protected var id_ = id
+    protected var flags_ = flags
+    protected var data_ = data
     protected var raw_ = raw
   }
   class Reply(
     val length: Int,
     id: Int,
-    val flags: Byte,
+    flags: Byte,
     val errorCode: Short,
-    val data: Array[Byte],
+    data: Array[Byte],
     raw: Array[Byte]
   ) extends FinishedPacket {
     protected var id_ = id
+    protected var flags_ = flags
+    protected var data_ = data
     protected var raw_ = raw
   }
 
@@ -501,18 +515,19 @@ class JdwpReplyHeader(val length: Int, val id: Int, val flags: Byte, val errorCo
 object CommandPacket {
   def toWire(id: Int, command: JdwpCommand) : Array[Byte] =
     val body = command.bodyToWire
-    val length = body.length + 11;
+    val b_id = ByteWrangler.int32_to_beI32(id);
+    val b_length = ByteWrangler.int32_to_beI32(body.length + 11);
     val commandSetID = command.command.getCommandSetID
     val commandID = command.command.getCommandID
     val header = Array[Byte](
-      (length & 0xFF000000 >> 24).asInstanceOf[Byte],
-      (length & 0x00FF0000 >> 16).asInstanceOf[Byte],
-      (length & 0x0000FF00 >> 8).asInstanceOf[Byte],
-      (length & 0x000000FF >> 0).asInstanceOf[Byte],
-      (id & 0xFF000000 >> 24).asInstanceOf[Byte],
-      (id & 0x00FF0000 >> 16).asInstanceOf[Byte],
-      (id & 0x0000FF00 >> 8).asInstanceOf[Byte],
-      (id & 0x000000FF >> 0).asInstanceOf[Byte],
+      b_length(0),
+      b_length(1),
+      b_length(2),
+      b_length(3),
+      b_id(0),
+      b_id(1),
+      b_id(2),
+      b_id(3),
       0.asInstanceOf[Byte],
       commandSetID,
       commandID
@@ -566,8 +581,8 @@ package packet.reply:
   ) {}
 
   object IdSizes extends FromWire[IdSizes] {
-    def fromWire(buffer: Array[Byte]) : IdSizes =
-      val checkedReader = CheckedReader(buffer)
+    def fromWire(body: Array[Byte]) : IdSizes =
+      val checkedReader = CheckedReader(body)
       IdSizes(
         fieldIDSize = checkedReader.read_int32,
         methodIDSize = checkedReader.read_int32,
