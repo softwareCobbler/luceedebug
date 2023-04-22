@@ -17,8 +17,8 @@ class Clear(val eventKind: Byte, val requestID: Int) extends JdwpCommand with Bo
         )
 }
 
-object Clear extends FromWire[Clear] {
-    def fromWire(idSizes: IdSizes, body: Array[Byte]) : Clear =
+object Clear extends BodyFromWire[Clear] {
+    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : Clear =
         val reader = JdwpSizedReader(idSizes, body)
         Clear(
             eventKind = reader.read_int8(),

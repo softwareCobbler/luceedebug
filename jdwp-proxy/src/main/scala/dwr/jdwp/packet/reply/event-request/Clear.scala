@@ -9,6 +9,6 @@ class Clear() extends BodyToWire {
     def bodyToWire() : Array[Byte] = new Array[Byte](0)
 }
 
-object Clear extends FromWire[Clear] {
-    def fromWire(idSizes: IdSizes, body: Array[Byte]) : Clear = Clear()
+object Clear extends BodyFromWire[Clear] {
+    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : Clear = Clear()
 }

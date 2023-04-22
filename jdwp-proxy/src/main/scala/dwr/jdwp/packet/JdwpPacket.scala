@@ -27,7 +27,7 @@ enum Command(val commandSetID: Byte, val commandID: Byte):
 
 object Command {
   import scala.collection.immutable.HashMap
-  type CommandParser = FromWire[JdwpCommand]
+  type CommandParser = BodyFromWire[JdwpCommand]
 
   def maybeGetParser(commandSet: Byte, command: Byte) : Option[CommandParser] =
     parsersByCmdByCmdSet
@@ -89,20 +89,6 @@ object CommandPacket {
 }
 
 object ReplyPacket {
-  // unsused ... ?
-  // def fromWire(bytes: Array[Byte]) : Array[Byte] =
-  //   val checkedReader = CheckedReader(bytes)
-  //   val header = readHeader(checkedReader)
-  //   new Array[Byte](0)
-
-  // def readHeader(reader: CheckedReader) : JdwpReplyHeader =
-  //   JdwpReplyHeader(
-  //     length = reader.read_int32(),
-  //     id = reader.read_int32(),
-  //     flags = reader.read_int8(),
-  //     errorCode = reader.read_int16(),
-  //   )
-
   def toWire(id: Int, reply: BodyToWire) : Array[Byte] =
     val body = reply.bodyToWire()
     val b_length = ByteWrangler.int32_to_beI32(body.length + 11);
@@ -129,7 +115,6 @@ trait BodyToWire {
   def bodyToWire() : Array[Byte]
 }
 
-trait FromWire[+T] {
-  // TODO: __body__fromWire
-  def fromWire(idSizes: IdSizes, buffer: Array[Byte]): T // TODO: should be Option[T]
+trait BodyFromWire[+T] {
+  def bodyFromWire(idSizes: IdSizes, buffer: Array[Byte]): T // TODO: should be Option[T]
 }

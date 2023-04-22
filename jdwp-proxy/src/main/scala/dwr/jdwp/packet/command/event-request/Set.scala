@@ -18,7 +18,7 @@ class Set(
     )
 }
 
-object Set extends FromWire[Set] {
+object Set extends BodyFromWire[Set] {
     enum Modifier:
         case Count(count: Int)
         case Conditional(exprID: Int)
@@ -33,7 +33,7 @@ object Set extends FromWire[Set] {
         case InstanceOnly(instance: Long)
         case SourceNameMatch(sourceNamePattern: String)
 
-    def fromWire(idSizes: IdSizes, buffer: Array[Byte]): Set =
+    def bodyFromWire(idSizes: IdSizes, buffer: Array[Byte]): Set =
         import Modifier._
         import EventRequestModifier._
         val reader = JdwpSizedReader(idSizes, buffer)

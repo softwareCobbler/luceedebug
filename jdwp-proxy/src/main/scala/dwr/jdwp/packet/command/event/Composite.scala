@@ -50,8 +50,8 @@ class Composite(
     val command: Command = Command.Event_Composite
 }
 
-object Composite extends FromWire[Composite] {
-    def fromWire(idSizes: IdSizes, buffer: Array[Byte]): Composite =
+object Composite extends BodyFromWire[Composite] {
+    def bodyFromWire(idSizes: IdSizes, buffer: Array[Byte]): Composite =
         import Event._
         import EventKind._
         val reader = JdwpSizedReader(idSizes, buffer)

@@ -1,7 +1,7 @@
 package dwr.jdwp.packet.reply.virtual_machine
 
 import dwr.reader._
-import dwr.jdwp.packet._
+import dwr.jdwp.packet.{BodyFromWire}
 
 class IdSizes(
     val fieldIDSize: Int,
@@ -11,15 +11,15 @@ class IdSizes(
     val frameIDSize: Int
 ) {}
 
-object IdSizes extends FromWire[IdSizes] {
+object IdSizes extends BodyFromWire[IdSizes] {
     /**
      * During VM connect, we don't know IdSizes, so we ask for it,
-     * but we need an IdSizes to to call `fromWire` to parse the IdSizes reply packet.
+     * but we need an IdSizes to to call `bodyFromWire` to parse the IdSizes reply packet.
      * This is a placeholder for that situation.
      */
     def dummy : IdSizes = IdSizes(-1,-1,-1,-1,-1)
 
-    def fromWire(idSizes: IdSizes, body: Array[Byte]) : IdSizes =
+    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : IdSizes =
         val checkedReader = CheckedReader(body)
         IdSizes(
            fieldIDSize = checkedReader.read_int32(),

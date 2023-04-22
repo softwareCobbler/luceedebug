@@ -72,7 +72,7 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
     ) : OnCommandReplyCallback =
       rawPacket => {
         // parse
-        val reply_ = reply.event_request.Set.fromWire(idSizes, rawPacket.raw)
+        val reply_ = reply.event_request.Set.bodyFromWire(idSizes, rawPacket.raw)
   
         // record
         activeEventRequests_.addOne((reply_.requestID, onEventReceiptStrategy))
@@ -130,7 +130,7 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
             case rawPacket : raw.Command =>
               Command
                 .maybeGetParser(rawPacket)
-                .map(_.fromWire(idSizes, rawPacket.raw)) match
+                .map(_.bodyFromWire(idSizes, rawPacket.raw)) match
                   case Some(compositeEvent : command.event.Composite) =>
                     for (event <- compositeEvent.events) do
                       if event.requestID == 0
@@ -157,7 +157,7 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
           case rawCmd : raw.Command =>
             Command
               .maybeGetParser(rawCmd)
-              .map(_.fromWire(idSizes, rawCmd.data)) match
+              .map(_.bodyFromWire(idSizes, rawCmd.data)) match
                 case Some(cmd : command.event_request.ClearAllBreakpoints) =>
                   final class W(val bpRequestID: Int, val freshPacketID: Int, val bytes: Array[Byte])
                   val ws = bpEventRequestsByClient_
@@ -300,7 +300,7 @@ object JdwpProxy {
         for (packet <- parser.consume(chunkedReader())) do
           if packet.isInstanceOf[raw.Reply] && packet.ID == 0
           then
-            idSizes = Some(reply.virtual_machine.IdSizes.fromWire(IdSizes.dummy, packet.data))
+            idSizes = Some(reply.virtual_machine.IdSizes.bodyFromWire(IdSizes.dummy, packet.data))
             break
           else parsed += packet
     }

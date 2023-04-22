@@ -8,6 +8,6 @@ class IdSizes() extends JdwpCommand with BodyToWire {
     def bodyToWire() = new Array[Byte](0)
 }
 
-object IdSizes extends FromWire[JdwpCommand] {
-    def fromWire(idSizes: reply.virtual_machine.IdSizes, body: Array[Byte]) : IdSizes = IdSizes()
+object IdSizes extends BodyFromWire[IdSizes] {
+    def bodyFromWire(idSizes: reply.virtual_machine.IdSizes, body: Array[Byte]) : IdSizes = IdSizes()
 }

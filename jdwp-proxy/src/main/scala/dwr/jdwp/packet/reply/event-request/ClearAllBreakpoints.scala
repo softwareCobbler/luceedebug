@@ -7,7 +7,7 @@ class ClearAllBreakpoints() extends BodyToWire {
     def bodyToWire() : Array[Byte] = new Array[Byte](0)
 }
 
-object ClearAllBreakpoints extends FromWire[ClearAllBreakpoints] {
-    def fromWire(idSizes: IdSizes, body: Array[Byte]) : ClearAllBreakpoints =
+object ClearAllBreakpoints extends BodyFromWire[ClearAllBreakpoints] {
+    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : ClearAllBreakpoints =
         ClearAllBreakpoints()
 }
