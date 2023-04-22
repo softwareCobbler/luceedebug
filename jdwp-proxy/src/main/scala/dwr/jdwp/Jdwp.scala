@@ -1,8 +1,82 @@
 package dwr.jdwp
 
-final class Location(val typeTag: Byte, val classID: Long, val methodID: Long, val index: Long)
-final class TaggedObjectID(tag: Byte, value: Long)
-final class Value(tag: Byte, value: Long)
+import dwr.utils.ByteWrangler
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
+
+import dwr.jdwp.packet.IdSizes
+import java.nio.charset.StandardCharsets
+
+trait WriteableJdwpEntity extends Any {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit
+}
+
+implicit class BoolOps(val v: Boolean) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer += (if v then 1 else 0).asInstanceOf[Byte]
+}
+
+implicit class ByteOps(val v: Byte) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer += v
+}
+
+implicit class ShortOps(val v: Short) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer.addAll(ByteWrangler.int16_to_beI16(v))
+}
+
+implicit class IntOps(val v: Int) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer.addAll(ByteWrangler.int32_to_beI32(v))
+}
+
+implicit class LongOps(val v: Long) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer.addAll(ByteWrangler.int64_to_beI64(v))
+}
+
+implicit class StringOps(val v: String) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    buffer.addAll(ByteWrangler.int32_to_beI32(v.length()))
+    buffer.addAll(v.getBytes(StandardCharsets.UTF_8)) // see docs on "modified utf8", this is probably wrong in some cases
+}
+
+final class Location(val typeTag: Byte, val classID: Long, val methodID: Long, val index: Long) extends WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    typeTag.toBuffer(buffer)
+    classID.toBuffer(buffer)
+    methodID.toBuffer(buffer)
+    index.toBuffer(buffer)
+}
+
+final class TaggedObjectID(tag: Byte, value: Long) extends WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    tag.toBuffer(buffer)
+    value.toBuffer(buffer)
+}
+
+final class Value(tag: Byte, value: Long) extends WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+    tag.toBuffer(buffer)
+    value.toBuffer(buffer)
+}
+
+private inline def write4Or8(size: Int, v: Long, buffer: ArrayBuffer[Byte]): Unit =
+  size match
+    case 4 => buffer.addAll(ByteWrangler.int32_to_beI32((v & 0xFFFFFFFF).asInstanceOf[Int]))
+    case 8 => buffer.addAll(ByteWrangler.int64_to_beI64(v))
+    case _ => throw new RuntimeException(s"Expected 4 or 8 as size param, but got ${size}")
+  
+private inline def writeFieldID(v: Long, buffer: ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = write4Or8(idSizes.fieldIDSize, v, buffer)
+private inline def writeFrameID(v: Long, buffer: ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = write4Or8(idSizes.frameIDSize, v, buffer)
+private inline def writeMethodID(v: Long, buffer: ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = write4Or8(idSizes.methodIDSize, v, buffer)
+private inline def writeObjectID(v: Long, buffer: ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = write4Or8(idSizes.objectIDSize, v, buffer)
+private inline def writeReferenceTypeID(v: Long, buffer: ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = write4Or8(idSizes.referenceTypeIDSize, v, buffer)
+
+class ThreadID(val threadID: Long) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: mutable.ArrayBuffer[Byte])(using idSizes: IdSizes): Unit = writeObjectID(threadID, buffer)
+}
 
 object EventKind {
   final val SINGLE_STEP                   = 1

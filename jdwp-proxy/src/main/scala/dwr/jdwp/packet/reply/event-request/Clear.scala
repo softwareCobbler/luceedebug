@@ -6,7 +6,7 @@ import dwr.utils.{ByteWrangler}
 
 class Clear() extends BodyToWire {
     val command = Command.EventRequest_Clear
-    def bodyToWire() : Array[Byte] = new Array[Byte](0)
+    def bodyToWire()(using idSizes: IdSizes) : Array[Byte] = new Array[Byte](0)
 }
 
 object Clear extends BodyFromWire[Clear] {

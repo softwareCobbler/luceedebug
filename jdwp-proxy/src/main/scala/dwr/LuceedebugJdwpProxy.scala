@@ -12,8 +12,14 @@ import scala.util.Failure
 
 @main
 def ok() : Unit =
-  val ARRAY : Byte = '['
-  println(ARRAY)
+  LuceedebugJdwpProxy(
+    jdwpHost = "localhost",
+    jdwpPort = 9999,
+    luceeClientHost = "localhost",
+    luceeClientPort = 10000,
+    jvmClientHost = "localhost",
+    jvmClientPort = 10001,
+  )
 
 class LuceedebugJdwpProxy(
   jdwpHost: String,
@@ -37,7 +43,8 @@ class LuceedebugJdwpProxy(
             lock.notify()
           }
         )
-        ()
+        (),
+        "luceedebug-jdwp-proxy"
       )
       thread.start()
       lock.wait()
@@ -56,13 +63,15 @@ class LuceedebugJdwpProxy(
     socket.bind(inetAddr)
     socket.accept()
   
-  implicit val ec : ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(2))
+  val luceeContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-lucee-frontend")))
+  val javaContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-java-frontend")))
   
   var lucee = connectLucee()
   var java = connectJava()
   
   private def connectLucee() : ConnectionState =
     Listening({
+      implicit val context = luceeContext
       val future = Future {
         val socket = listenOn(luceeClientHost, luceeClientPort)
         proxyThread.proxy.createAndRegisterClient(
@@ -81,6 +90,7 @@ class LuceedebugJdwpProxy(
 
   private def connectJava() : ConnectionState =
     Listening({
+      implicit val context = javaContext
       val future = Future {
         val socket = listenOn(jvmClientHost, jvmClientPort)
         proxyThread.proxy.createAndRegisterClient(

@@ -66,7 +66,7 @@ object Command {
 }
 
 object CommandPacket {
-  def toWire(id: Int, command: JdwpCommand & BodyToWire) : Array[Byte] =
+  def toWire(id: Int, command: JdwpCommand & BodyToWire)(using idSizes: IdSizes): Array[Byte] =
     val body = command.bodyToWire()
     val b_id = ByteWrangler.int32_to_beI32(id);
     val b_length = ByteWrangler.int32_to_beI32(body.length + 11);
@@ -89,7 +89,7 @@ object CommandPacket {
 }
 
 object ReplyPacket {
-  def toWire(id: Int, reply: BodyToWire) : Array[Byte] =
+  def toWire(id: Int, reply: BodyToWire)(using idSizes: IdSizes) : Array[Byte] =
     val body = reply.bodyToWire()
     val b_length = ByteWrangler.int32_to_beI32(body.length + 11);
     val b_id = ByteWrangler.int32_to_beI32(id);
@@ -112,7 +112,7 @@ object ReplyPacket {
 }
 
 trait BodyToWire {
-  def bodyToWire() : Array[Byte]
+  def bodyToWire()(using idSizes: IdSizes) : Array[Byte]
 }
 
 trait BodyFromWire[+T] {

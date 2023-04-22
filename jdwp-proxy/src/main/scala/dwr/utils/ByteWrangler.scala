@@ -30,7 +30,7 @@ object ByteWrangler {
       | ((vs(2) & 0xFF) << 8)
       | ((vs(3) & 0xFF) << 0)
 
-  def int64_to_beI64(v: Int) : Array[Byte] =
+  def int64_to_beI64(v: Long) : Array[Byte] =
     Array[Byte](
       ((v >>> 56) & 0xFF).asInstanceOf[Byte],
       ((v >>> 48) & 0xFF).asInstanceOf[Byte],

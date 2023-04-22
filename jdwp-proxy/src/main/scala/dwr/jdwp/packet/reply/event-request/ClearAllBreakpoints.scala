@@ -4,7 +4,7 @@ import dwr.jdwp.packet._
 import dwr.reader._
 
 class ClearAllBreakpoints() extends BodyToWire {
-    def bodyToWire() : Array[Byte] = new Array[Byte](0)
+    def bodyToWire()(using idSizes: IdSizes) : Array[Byte] = new Array[Byte](0)
 }
 
 object ClearAllBreakpoints extends BodyFromWire[ClearAllBreakpoints] {

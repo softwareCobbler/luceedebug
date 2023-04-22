@@ -5,7 +5,7 @@ import dwr.jdwp.packet.reply
 
 class IdSizes() extends JdwpCommand with BodyToWire {
     final val command = Command.VirtualMachine_IDSizes
-    def bodyToWire() = new Array[Byte](0)
+    def bodyToWire()(using idSizes: reply.virtual_machine.IdSizes) : Array[Byte] = new Array[Byte](0)
 }
 
 object IdSizes extends BodyFromWire[IdSizes] {

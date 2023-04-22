@@ -22,14 +22,14 @@ object Set extends BodyFromWire[Set] {
     enum Modifier:
         case Count(count: Int)
         case Conditional(exprID: Int)
-        case ThreadOnly(thread: Long)
+        case ThreadOnly(thread: ThreadID)
         case ClassOnly(clazz: Long)
         case ClassMatch(classPattern: String)
         case ClassExclude(classPattern: String)
         case LocationOnly(loc: Location)
         case ExceptionOnly(exceptionOrNull: Long, caught: Boolean, uncaught: Boolean)
         case FieldOnly(declaringClazz: Long, fieldID: Long)
-        case Step(thread: Long, size: Int, depth: Int)
+        case Step(thread: ThreadID, size: Int, depth: Int)
         case InstanceOnly(instance: Long)
         case SourceNameMatch(sourceNamePattern: String)
 

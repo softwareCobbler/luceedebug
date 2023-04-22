@@ -6,7 +6,7 @@ import dwr.utils.{ByteWrangler}
 
 class Clear(val eventKind: Byte, val requestID: Int) extends JdwpCommand with BodyToWire {
     val command = Command.EventRequest_Clear
-    def bodyToWire() : Array[Byte] =
+    def bodyToWire()(using idSizes: IdSizes) : Array[Byte] =
         val b_requestID = ByteWrangler.int32_to_beI32(requestID)
         Array[Byte](
             eventKind,

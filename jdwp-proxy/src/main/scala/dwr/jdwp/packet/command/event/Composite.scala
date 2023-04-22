@@ -4,50 +4,152 @@ import dwr.jdwp._
 import dwr.jdwp.packet._
 
 import dwr.reader._
+import scala.collection.mutable.ArrayBuffer
+import dwr.utils.ByteWrangler
+import scala.collection.mutable
 
-enum Event(val requestID: Int):
-    case VMStart(requestID_ : Int, thread: Long)
+enum Event(val requestID: Int) extends WriteableJdwpEntity:
+    case VMStart(requestID_ : Int, thread: ThreadID)
         extends Event(requestID_)
     case VMDeath(requestID_ : Int)
         extends Event(requestID_)
-    case SingleStep(requestID_ : Int, thread: Long, location: Location)
+    case SingleStep(requestID_ : Int, thread: ThreadID, location: Location)
         extends Event(requestID_)
-    case Breakpoint(requestID_ : Int, thread: Long, location: Location)
+    case Breakpoint(requestID_ : Int, thread: ThreadID, location: Location)
         extends Event(requestID_)
-    case MethodEntry(requestID_ : Int, thread: Long, location: Location)
+    case MethodEntry(requestID_ : Int, thread: ThreadID, location: Location)
         extends Event(requestID_)
-    case MethodExit(requestID_ : Int, thread: Long, location: Location)
+    case MethodExit(requestID_ : Int, thread: ThreadID, location: Location)
         extends Event(requestID_)
-    case MethodExitWithReturnValue(requestID_ : Int, thread: Long, location: Location, value: Value)
+    case MethodExitWithReturnValue(requestID_ : Int, thread: ThreadID, location: Location, value: Value)
         extends Event(requestID_)
-    case MonitorContendedEnter(requestID_ : Int, thread: Long, obj: TaggedObjectID, location: Location)
+    case MonitorContendedEnter(requestID_ : Int, thread: ThreadID, obj: TaggedObjectID, location: Location)
         extends Event(requestID_)
-    case MonitorContendedEntered(requestID_ : Int, thread: Long, obj: TaggedObjectID, location: Location)
+    case MonitorContendedEntered(requestID_ : Int, thread: ThreadID, obj: TaggedObjectID, location: Location)
         extends Event(requestID_)
-    case MonitorWait(requestID_ : Int, thread: Long, obj: TaggedObjectID, location: Location, timeout: Long)
+    case MonitorWait(requestID_ : Int, thread: ThreadID, obj: TaggedObjectID, location: Location, timeout: Long)
         extends Event(requestID_)
-    case MonitorWaited(requestID_ : Int, thread: Long, obj: TaggedObjectID, location: Location, timed_out: Boolean)
+    case MonitorWaited(requestID_ : Int, thread: ThreadID, obj: TaggedObjectID, location: Location, timed_out: Boolean)
         extends Event(requestID_)
-    case Exception(requestID_ : Int, thread: Long, location: Location, exception: TaggedObjectID, catchLocation: Location)
+    case Exception(requestID_ : Int, thread: ThreadID, location: Location, exception: TaggedObjectID, catchLocation: Location)
         extends Event(requestID_)
-    case ThreadStart(requestID_ : Int, thread: Long)
+    case ThreadStart(requestID_ : Int, thread: ThreadID)
         extends Event(requestID_)
-    case ThreadDeath(requestID_ : Int, thread: Long)
+    case ThreadDeath(requestID_ : Int, thread: ThreadID)
         extends Event(requestID_)
-    case ClassPrepare(requestID_ : Int, thread: Long, refTypeTag: Byte, refTypeID: Long, signature: String, status: Int)
+    case ClassPrepare(requestID_ : Int, thread: ThreadID, refTypeTag: Byte, refTypeID: Long, signature: String, status: Int)
         extends Event(requestID_)
     case ClassUnload(requestID_ : Int, signature: String)
         extends Event(requestID_)
-    case FieldAccess(requestID_ : Int, thread: Long, location: Location, refTypeTag: Byte, refTypeID: Long, fieldID: Long, obj: TaggedObjectID)
+    case FieldAccess(requestID_ : Int, thread: ThreadID, location: Location, refTypeTag: Byte, refTypeID: Long, fieldID: Long, obj: TaggedObjectID)
         extends Event(requestID_)
-    case FieldModification(requestID_ : Int, thread: Long, location: Location, refTypeTag: Byte, refTypeID: Long, fieldID: Long, obj: TaggedObjectID, valueToBe: Value)
+    case FieldModification(requestID_ : Int, thread: ThreadID, location: Location, refTypeTag: Byte, refTypeID: Long, fieldID: Long, obj: TaggedObjectID, valueToBe: Value)
         extends Event(requestID_)
+
+    def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
+        this match
+            case VMStart(requestID_, thread) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+            case VMDeath(requestID_) =>
+                requestID_.toBuffer(buffer)
+            case SingleStep(requestID_, thread, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case Breakpoint(requestID_, thread, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case MethodEntry(requestID_, thread, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case MethodExit(requestID_, thread, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case MethodExitWithReturnValue(requestID_, thread, location, value) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+                value.toBuffer(buffer)
+            case MonitorContendedEnter(requestID_, thread, obj, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                obj.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case MonitorContendedEntered(requestID_, thread, obj, location) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                obj.toBuffer(buffer)
+                location.toBuffer(buffer)
+            case MonitorWait(requestID_, thread, obj, location, timeout) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                obj.toBuffer(buffer)
+                location.toBuffer(buffer)
+                timeout.toBuffer(buffer)
+            case MonitorWaited(requestID_, thread, obj, location, timed_out) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                obj.toBuffer(buffer)
+                location.toBuffer(buffer)
+                timed_out.toBuffer(buffer)
+            case Exception(requestID_, thread, location, exception, catchLocation) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                exception.toBuffer(buffer)
+                catchLocation.toBuffer(buffer)
+            case ThreadStart(requestID_, thread) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+            case ThreadDeath(requestID_, thread) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+            case ClassPrepare(requestID_, thread, refTypeTag, refTypeID, signature, status) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                refTypeTag.toBuffer(buffer)
+                refTypeID.toBuffer(buffer)
+                signature.toBuffer(buffer)
+                status.toBuffer(buffer)
+            case ClassUnload(requestID_, signature) =>
+                requestID_.toBuffer(buffer)
+                signature.toBuffer(buffer)
+            case FieldAccess(requestID_, thread, location, refTypeTag, refTypeID, fieldID, obj) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+                refTypeTag.toBuffer(buffer)
+                refTypeID.toBuffer(buffer)
+                fieldID.toBuffer(buffer)
+                obj.toBuffer(buffer)
+            case FieldModification(requestID_, thread, location, refTypeTag, refTypeID, fieldID, obj, valueToBe) =>
+                requestID_.toBuffer(buffer)
+                thread.toBuffer(buffer)
+                location.toBuffer(buffer)
+                refTypeTag.toBuffer(buffer)
+                refTypeID.toBuffer(buffer)
+                fieldID.toBuffer(buffer)
+                obj.toBuffer(buffer)
+                valueToBe.toBuffer(buffer)
+            
+        
 
 class Composite(
     val suspendPolicy: Byte,
     val events: Seq[Event]
-) extends JdwpCommand {
+) extends JdwpCommand with BodyToWire {
     val command: Command = Command.Event_Composite
+
+    def bodyToWire()(using idSizes: IdSizes): Array[Byte] =
+        val buffer = new ArrayBuffer[Byte](32)
+        buffer += suspendPolicy
+        buffer.addAll(ByteWrangler.int32_to_beI32(events.length))
+        for (event <- events) do
+            event.toBuffer(buffer)
+        buffer.toArray
 }
 
 object Composite extends BodyFromWire[Composite] {

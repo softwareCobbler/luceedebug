@@ -3,6 +3,7 @@ package dwr.reader
 import dwr.utils.{ByteWrangler}
 import dwr.jdwp.{Tag, TaggedObjectID, Location, Value}
 import dwr.jdwp.packet.reply.virtual_machine.{IdSizes}
+import dwr.jdwp._
 import java.nio.charset.StandardCharsets
 
 /**
@@ -39,7 +40,7 @@ class JdwpSizedReader(idSizes: IdSizes, raw: Array[Byte]) extends CheckedReader(
   def readReferenceTypeID() = read4Or8(idSizes.referenceTypeIDSize)
   def readFrameID() = read4Or8(idSizes.frameIDSize)
 
-  def readThreadID() = readObjectID()
+  def readThreadID() : ThreadID = ThreadID(readObjectID())
   def readThreadGroupID() = readObjectID()
   def readStringID() = readObjectID()
   def readClassLoaderID() = readObjectID()

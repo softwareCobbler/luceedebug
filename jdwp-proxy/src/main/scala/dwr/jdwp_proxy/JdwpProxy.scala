@@ -30,7 +30,7 @@ class ClientFacingProxyClient(
       val reader = io.chunkedReader(1024)
       while true do
         receiveFromClient(this, reader())
-    })
+    }, name + "-IO")
     thread.start()
     thread
   }
@@ -42,12 +42,12 @@ class JvmFacingProxyClient(
   val receiveFromJVM: Array[Byte] => Unit,
   val receiveFromClient: (ClientFacingProxyClient, raw.FinishedPacket) => Unit,
 ) {
-  private val thread = {
+  val thread = {
     val thread = new Thread(() => {
       val reader = io.chunkedReader(1024)
       while true do
         receiveFromJVM(reader())
-    })
+    }, "jvm-facing-proxy-reader")
     thread.start()
     thread
   }
@@ -62,7 +62,7 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
   class PacketOrigin(val originalID: Int, val client: ClientFacingProxyClient)
 
   type OnCommandReplyCallback = raw.Reply => Unit
-  type OnEventReceiptCallback = (cmd: raw.Command, requestID: Int) => Unit
+  type OnEventReceiptCallback = (bytes: Array[Byte], requestID: Int) => Unit
   
   private object OnCommandReplyStrategy {
     def recordEventRequestAndForward(
@@ -108,18 +108,21 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
   
   object OnEventReceiptStrategy {
     def forwardAndDiscard(client: ClientFacingProxyClient) : OnEventReceiptCallback =
-      (rawPacket, requestID) => {
-        client.receiveFromJVM(rawPacket.raw)
+      (bytes, requestID) => {
+        client.receiveFromJVM(bytes)
         clearEventRequest(client, requestID)
       }
 
     def justForward(client: ClientFacingProxyClient) : OnEventReceiptCallback =
-      (rawPacket, requestID) => client.receiveFromJVM(rawPacket.raw)
+      (bytes, requestID) => client.receiveFromJVM(bytes)
   }
 
   private val nextClientID = AtomicInteger()
   private val nextPacketID = AtomicInteger()
   private val (jvmSocketIO, parser, idSizes) = JdwpProxy.getSocketIOFromHandshake(host, port)
+
+  private final implicit val _idSizes_ : IdSizes = idSizes
+
   private val jvm : JvmFacingProxyClient = {
     JvmFacingProxyClient(
       id = nextClientID.getAndIncrement(),
@@ -127,30 +130,28 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
       receiveFromJVM = bytes => {
         for (rawPacket <- parser.consume(bytes)) do
           rawPacket match
-            case rawPacket : raw.Command =>
+            case rawCmd : raw.Command =>
               Command
-                .maybeGetParser(rawPacket)
-                .map(_.bodyFromWire(idSizes, rawPacket.raw)) match
+                .maybeGetParser(rawCmd)
+                .map(_.bodyFromWire(idSizes, rawCmd.raw)) match
                   case Some(compositeEvent : command.event.Composite) =>
                     for (event <- compositeEvent.events) do
                       if event.requestID == 0
-                      then () // should send to all clients
+                      then
+                        for (client <- clients_.values) do
+                          client.receiveFromJVM(CommandPacket.toWire(nextPacketID.getAndIncrement(), compositeEvent.copyFromSingleEvent(event)))
                       else
                         activeEventRequests_.get(event.requestID) match
                           case Some(callback) =>
-                            // need to rebuild the packet to be a composite event of 1 event
-                            callback(rawPacket, event.requestID)
+                            callback(CommandPacket.toWire(nextPacketID.getAndIncrement(), compositeEvent.copyFromSingleEvent(event)), event.requestID)
                           case None => throw new RuntimeException(s"Event with non-zero requestID=${event.requestID} recieved, but no callback is available.")
-                  case _ => throw new RuntimeException(s"Unexpected command packet from JVM, commandSet=${rawPacket.commandSet} command=${rawPacket.command}")
-              for ((_, client) <- clients_) do
-                // split into event id streams ...
-                client.receiveFromJVM(rawPacket.raw)
-            case rawPacket : raw.Reply =>
-              commandsAwaitingReply_.get(rawPacket.ID) match
+                  case _ => throw new RuntimeException(s"Unexpected command packet from JVM, commandSet=${rawCmd.commandSet} command=${rawCmd.command}")
+            case rawReply : raw.Reply =>
+              commandsAwaitingReply_.get(rawReply.ID) match
                 case Some(callback) =>
-                  callback(rawPacket)
-                  commandsAwaitingReply_.remove(rawPacket.ID)
-                case None => throw new RuntimeException(s"Reply packet from JVM having id=${rawPacket.ID} was unexpected; no handler is available.")
+                  callback(rawReply)
+                  commandsAwaitingReply_.remove(rawReply.ID)
+                case None => throw new RuntimeException(s"Reply packet from JVM having id=${rawReply.ID} was unexpected; no handler is available.")
       },
       receiveFromClient = (client, rawPacket) => {
         rawPacket match
@@ -222,11 +223,13 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
                   )
                 case _ =>
                   throw new RuntimeException(s"unhandled command received from client '${client.name}', commandSet=${rawCmd.commandSet} command=${rawCmd.command}")
-          case reply : raw.Reply =>
+          case rawReply : raw.Reply =>
             throw new RuntimeException(s"unexpected reply packet from client '${client.name}'")
       }
     )
   }
+
+  jvm.thread.join()
 
   private val clients_ = TrieMap[Int, ClientFacingProxyClient]()
   private val commandsAwaitingReply_ = TrieMap[Int, OnCommandReplyCallback]()
@@ -283,7 +286,7 @@ object JdwpProxy {
     then throw new IOException(s"Bad JDWP handshake, got '${receivedHandshake}'")
 
     socketIO.write(
-      bytes = CommandPacket.toWire(0, command.virtual_machine.IdSizes()),
+      bytes = CommandPacket.toWire(0, command.virtual_machine.IdSizes())(using IdSizes.dummy),
       timeout_ms = 5000
     )
     
@@ -308,9 +311,7 @@ object JdwpProxy {
     (socketIO, parser, idSizes.get)
 }
 
-object CompositeEvent {
-  extension (v: command.event.Composite) {
-    def copyFromSingleEvent(event: command.event.Event) : command.event.Composite =
-      command.event.Composite(v.suspendPolicy, Seq(event))
-  }
+extension (v: command.event.Composite) {
+  def copyFromSingleEvent(event: command.event.Event) : command.event.Composite =
+    command.event.Composite(v.suspendPolicy, Seq(event))
 }
