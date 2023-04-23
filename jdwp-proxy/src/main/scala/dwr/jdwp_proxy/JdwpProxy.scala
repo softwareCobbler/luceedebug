@@ -30,6 +30,7 @@ class ClientFacingProxyClient(
       val reader = io.chunkedReader(1024)
       while true do
         receiveFromClient(this, reader())
+        println("back in loop")
     }, name + "-IO")
     thread.start()
     thread
@@ -72,10 +73,13 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
     ) : OnCommandReplyCallback =
       rawPacket => {
         // parse
-        val reply_ = reply.event_request.Set.bodyFromWire(idSizes, rawPacket.raw)
-  
+        val reply_ = reply.event_request.Set.bodyFromWire(idSizes, rawPacket.body)
+        
         // record
         activeEventRequests_.addOne((reply_.requestID, onEventReceiptStrategy))
+        
+        println(s"recording event request response, got requestID ${reply_.requestID}")
+        
         if request.eventKind == EventKind.BREAKPOINT
         then bpEventRequestsByClient_
           .getOrElseUpdate(origin.client.id, TrieMap[Int, Unit]())
@@ -123,6 +127,11 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
 
   private final implicit val _idSizes_ : IdSizes = idSizes
 
+  private val clients_ = TrieMap[Int, ClientFacingProxyClient]()
+  private val commandsAwaitingReply_ = TrieMap[Int, OnCommandReplyCallback]()
+  private val activeEventRequests_ = TrieMap[Int, OnEventReceiptCallback]()
+  private val bpEventRequestsByClient_ = TrieMap[Int, TrieMap[Int, Unit]]()
+
   private val jvm : JvmFacingProxyClient = {
     JvmFacingProxyClient(
       id = nextClientID.getAndIncrement(),
@@ -133,18 +142,20 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
             case rawCmd : raw.Command =>
               Command
                 .maybeGetParser(rawCmd)
-                .map(_.bodyFromWire(idSizes, rawCmd.raw)) match
+                .map(_.bodyFromWire(idSizes, rawCmd.body)) match
                   case Some(compositeEvent : command.event.Composite) =>
                     for (event <- compositeEvent.events) do
                       if event.requestID == 0
                       then
                         for (client <- clients_.values) do
+                          println("forwarding request-id-zero packet")
                           client.receiveFromJVM(CommandPacket.toWire(nextPacketID.getAndIncrement(), compositeEvent.copyFromSingleEvent(event)))
                       else
                         activeEventRequests_.get(event.requestID) match
                           case Some(callback) =>
+                            println("callback with non-zero-request-id packet")
                             callback(CommandPacket.toWire(nextPacketID.getAndIncrement(), compositeEvent.copyFromSingleEvent(event)), event.requestID)
-                          case None => throw new RuntimeException(s"Event with non-zero requestID=${event.requestID} recieved, but no callback is available.")
+                          case None => throw new RuntimeException(s"Eventwith non-zero requestID=${event.requestID} recieved, but no callback is available; commandsAwaitingReply.size=${commandsAwaitingReply_.size}, cmdset=${rawCmd.commandSet}, cmd=${rawCmd.command}, event=${event}")
                   case _ => throw new RuntimeException(s"Unexpected command packet from JVM, commandSet=${rawCmd.commandSet} command=${rawCmd.command}")
             case rawReply : raw.Reply =>
               commandsAwaitingReply_.get(rawReply.ID) match
@@ -158,7 +169,7 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
           case rawCmd : raw.Command =>
             Command
               .maybeGetParser(rawCmd)
-              .map(_.bodyFromWire(idSizes, rawCmd.data)) match
+              .map(_.bodyFromWire(idSizes, rawCmd.body)) match
                 case Some(cmd : command.event_request.ClearAllBreakpoints) =>
                   final class W(val bpRequestID: Int, val freshPacketID: Int, val bytes: Array[Byte])
                   val ws = bpEventRequestsByClient_
@@ -222,7 +233,24 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
                     }
                   )
                 case _ =>
-                  throw new RuntimeException(s"unhandled command received from client '${client.name}', commandSet=${rawCmd.commandSet} command=${rawCmd.command}")
+                  //
+                  // any other command we just blindly shuttle
+                  //
+                  val onReplyStrategy = OnCommandReplyStrategy
+                    .justForward(
+                      PacketOrigin(rawPacket.ID, client)
+                    )
+                  
+                  val newID = nextPacketID.getAndIncrement()
+                  
+                  rawPacket.withSwappedID(
+                    newID,
+                    packet => {
+                      commandsAwaitingReply_.addOne((newID, onReplyStrategy))
+                      println(s"Writing packet, cmdset=${rawCmd.commandSet} cmd=${rawCmd.command}")
+                      jvmSocketIO.write(packet.raw, 1000)
+                    }
+                  )
           case rawReply : raw.Reply =>
             throw new RuntimeException(s"unexpected reply packet from client '${client.name}'")
       }
@@ -230,11 +258,6 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
   }
 
   jvm.thread.join()
-
-  private val clients_ = TrieMap[Int, ClientFacingProxyClient]()
-  private val commandsAwaitingReply_ = TrieMap[Int, OnCommandReplyCallback]()
-  private val activeEventRequests_ = TrieMap[Int, OnEventReceiptCallback]()
-  private val bpEventRequestsByClient_ = TrieMap[Int, TrieMap[Int, Unit]]()
 
   private def clearEventRequest(client: ClientFacingProxyClient, eventRequestID: Int) : Unit =
     activeEventRequests_.remove(eventRequestID)
@@ -246,14 +269,32 @@ class JdwpProxy(host: String, port: Int, cb: JdwpProxy => Unit) {
     onClientDisconnect: () => Unit,
   ) : ClientFacingProxyClient =
     val socketIO = SocketIO(clientSocket.getInputStream(), clientSocket.getOutputStream())
+    
+    println("reading handshake...")
+    val handshakeIn = String(socketIO.read(JdwpProxy.HANDSHAKE_BYTES.length, 1000), StandardCharsets.UTF_8)
+    println("read handshake...")
+    
+    if !handshakeIn.equals(JdwpProxy.HANDSHAKE_STRING)
+    then throw new RuntimeException(s"Bad JDWP handshake for proxy client '${name}, handshake was '${handshakeIn}")
+
+    println("read good handshake, writing ...")
+
+    socketIO.write(JdwpProxy.HANDSHAKE_BYTES, 1000)
+    println("wrote handshake, consuming packets...")
+
     val parser = raw.PacketParser()
     val client : ClientFacingProxyClient = ClientFacingProxyClient(
       id = nextClientID.getAndIncrement(),
       io = socketIO,
       // give the jvm proxy client completed packets
       receiveFromClient = (client, bytes) => {
+        println(s"got ${bytes.length} bytes on client ${client.name}")
         for (packet <- parser.consume(bytes)) do
+          println(s"got a packet ${packet}")
+          val length = packet.raw
+          System.out.println(s"  length fromraw -> ${length(0)},${length(1)},${length(2)},${length(3)}")
           jvm.receiveFromClient(client, packet)
+        println("done eating packets")
       },
       // although we give the jvm completed packets, the jvm gives us raw bytes,
       // and we just forward them
@@ -303,7 +344,7 @@ object JdwpProxy {
         for (packet <- parser.consume(chunkedReader())) do
           if packet.isInstanceOf[raw.Reply] && packet.ID == 0
           then
-            idSizes = Some(reply.virtual_machine.IdSizes.bodyFromWire(IdSizes.dummy, packet.data))
+            idSizes = Some(reply.virtual_machine.IdSizes.bodyFromWire(IdSizes.dummy, packet.body))
             break
           else parsed += packet
     }

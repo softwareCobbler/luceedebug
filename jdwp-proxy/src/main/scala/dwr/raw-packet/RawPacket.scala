@@ -5,6 +5,7 @@ import scala.math.{min}
 import scala.annotation.tailrec
 
 import dwr.reader._
+import dwr.utils.ByteWrangler
 
 class PacketBuilder {
   val length = new ArrayBuffer[Byte](4)
@@ -12,43 +13,81 @@ class PacketBuilder {
   val last3 = new ArrayBuffer[Byte](3)
   val body = new ArrayBuffer[Byte](64)
   val raw = new ArrayBuffer[Byte](64)
+  private val parsedLength = LengthReader()
+  
+  private final class LengthReader() {
+    private final inline val NIL = -1;
+    private var cached_ = NIL
 
-  def toFinishedPacket() : FinishedPacket =
-    if isReply
-    then 
-      val last3Reader = CheckedReader(last3.toArray)
-      Reply(
-        length = readLength(),
-        id = readID(),
-        flags = last3Reader.read_int8(),
-        errorCode = last3Reader.read_int16(),
-        data = body.toArray,
-        raw = raw.toArray
-      )
-    else
-      val last3Reader = CheckedReader(last3.toArray)
-      Command(
-        length = readLength(),
-        id = readID(),
-        flags = last3Reader.read_int8(),
-        commandSet = last3Reader.read_int8(),
-        command = last3Reader.read_int8(),
-        data = body.toArray,
-        raw = raw.toArray
-      )
+    def get() : Int =
+      if length.length != 4
+      then throw new RuntimeException("the packet `length` field have exactly length 4")
+      else {
+        if cached_ == NIL
+        then {
+          cached_ = ByteWrangler.beI32_to_int32(length.toArray)
+          cached_
+        }
+        else cached_
+      }
+
+    def clear() : Unit = cached_ = NIL
+  }
+
+
+  private def reset() : Unit =
+    length.clear()
+    id.clear()
+    last3.clear()
+    body.clear()
+    raw.clear()
+    parsedLength.clear()
+
+  def consumeAndReset() : FinishedPacket =
+    try {
+      if isReply
+      then 
+        val last3Reader = CheckedReader(last3.toArray)
+        Reply(
+          length = packetLengthIncludingHeader,
+          id = readID(),
+          flags = last3Reader.read_int8(),
+          errorCode = last3Reader.read_int16(),
+          body = body.toArray,
+          raw = raw.toArray
+        )
+      else
+        val last3Reader = CheckedReader(last3.toArray)
+        Command(
+          length = packetLengthIncludingHeader,
+          id = readID(),
+          flags = last3Reader.read_int8(),
+          commandSet = last3Reader.read_int8(),
+          command = last3Reader.read_int8(),
+          body = body.toArray,
+          raw = raw.toArray
+        )
+    }
+    finally {
+      reset()
+    }
   
   def flags : Byte = last3(0)
   def isReply : Boolean = (flags & 0x80) > 0
   def isCommand : Boolean = !isReply
 
-  def readLength() : Int = CheckedReader(length.toArray).read_int32()
+  private final inline val HEADER_LENGTH = 11
+
+  def packetLengthIncludingHeader : Int = parsedLength.get()
+  def packetLengthNoHeader : Int = parsedLength.get() - HEADER_LENGTH
+
   def readID() : Int = CheckedReader(id.toArray).read_int32()
 }
 
 sealed abstract class FinishedPacket {
   protected var id_ : Int
   protected var flags_ : Byte
-  protected var data_ : Array[Byte]
+  protected var body_ : Array[Byte]
   protected var raw_ : Array[Byte]
 
   def withSwappedID(newID: Int, f: FinishedPacket => Unit) : Unit = this.synchronized {
@@ -64,16 +103,16 @@ sealed abstract class FinishedPacket {
   
   def ID : Int = id_
   def flags : Byte = flags_
-  def data : Array[Byte] = data_
+  def body : Array[Byte] = body_
   def raw : Array[Byte] = raw_
 
   private def setID(v: Int) : Unit =
     id_ = v
-    raw_(0) = ((v & 0xFF000000) >> 24).asInstanceOf[Byte]
-    raw_(1) = ((v & 0x00FF0000) >> 16).asInstanceOf[Byte]
-    raw_(2) = ((v & 0x0000FF00) >> 8).asInstanceOf[Byte]
-    raw_(3) = ((v & 0x000000FF) >> 0).asInstanceOf[Byte]
-    
+    val raw = ByteWrangler.int32_to_beI32(v)
+    raw_(4) = raw(0)
+    raw_(5) = raw(1)
+    raw_(6) = raw(2)
+    raw_(7) = raw(3)
 }
 
 class Command(
@@ -82,12 +121,12 @@ class Command(
   flags: Byte,
   val commandSet: Byte,
   val command: Byte,
-  data: Array[Byte],
+  body: Array[Byte],
   raw: Array[Byte]
 ) extends FinishedPacket {
   protected var id_ = id
   protected var flags_ = flags
-  protected var data_ = data
+  protected var body_ = body
   protected var raw_ = raw
 }
 
@@ -96,12 +135,12 @@ class Reply(
   id: Int,
   flags: Byte,
   val errorCode: Short,
-  data: Array[Byte],
+  body: Array[Byte],
   raw: Array[Byte]
 ) extends FinishedPacket {
   protected var id_ = id
   protected var flags_ = flags
-  protected var data_ = data
+  protected var body_ = body
   protected var raw_ = raw
 }
 
@@ -160,20 +199,34 @@ class PacketParser {
       consumed += 1
 
     ParseResult(
-      nextState = if builder.last3.length == 3 then State.Body() else State.HeaderLast3(),
+      nextState = if builder.last3.length == 3
+        then
+          if builder.packetLengthIncludingHeader == HEADER_LENGTH
+          then State.Done() // no body, we're done
+          else State.Body() // still need to parse body
+        else State.HeaderLast3(),
       remaining = buffer.slice(consumable, buffer.length)
     )
   
   private def parseBody(buffer: Array[Byte]) : ParseResult =
-    val consumable = min(buffer.length, builder.readLength() - builder.length.length)
+    val consumable = min(buffer.length, builder.packetLengthNoHeader - builder.body.length)
+
+    if consumable < 0
+    then throw new RuntimeException(s"buffer consumable count was LT 0: ${consumable}")
+
     var consumed = 0
     val checkedReader = CheckedReader(buffer)
     while consumed != consumable do
       pushByte(builder.body, checkedReader.read_int8())
       consumed += 1
 
+    if (builder.body.length > builder.packetLengthNoHeader)
+    then throw new RuntimeException(s"current body length is ${builder.body.length} but target size is ${builder.packetLengthNoHeader} (all sans header)")
+    
+    println("body length is " + builder.body.length + ", expected body length is " + (builder.packetLengthNoHeader))
+    
     ParseResult(
-      nextState = if builder.body.length + HEADER_LENGTH == builder.readLength() then State.Done() else State.Body(),
+      nextState = if builder.body.length == builder.packetLengthNoHeader then State.Done() else State.Body(),
       remaining = buffer.slice(consumed, buffer.length)
     )
 
@@ -195,7 +248,7 @@ class PacketParser {
     parse(buffer) match
       case ParseResult(State.Done(), remaining) =>
         state = startState
-        consume(remaining, completed :+ builder.toFinishedPacket())
+        consume(remaining, completed :+ builder.consumeAndReset())
       case ParseResult(nextState, remaining) =>
         state = nextState
         consume(remaining, completed)

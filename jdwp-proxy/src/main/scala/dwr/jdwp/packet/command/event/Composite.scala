@@ -49,65 +49,80 @@ enum Event(val requestID: Int) extends WriteableJdwpEntity:
     def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
         this match
             case VMStart(requestID_, thread) =>
+                EventKind.VM_START.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
             case VMDeath(requestID_) =>
+                EventKind.VM_DEATH.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
             case SingleStep(requestID_, thread, location) =>
+                EventKind.SINGLE_STEP.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
             case Breakpoint(requestID_, thread, location) =>
+                EventKind.BREAKPOINT.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
             case MethodEntry(requestID_, thread, location) =>
+                EventKind.METHOD_ENTRY.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
             case MethodExit(requestID_, thread, location) =>
+                EventKind.METHOD_EXIT.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
             case MethodExitWithReturnValue(requestID_, thread, location, value) =>
+                EventKind.METHOD_EXIT_WITH_RETURN_VALUE.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
                 value.toBuffer(buffer)
             case MonitorContendedEnter(requestID_, thread, obj, location) =>
+                EventKind.MONITOR_CONTENDED_ENTER.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 obj.toBuffer(buffer)
                 location.toBuffer(buffer)
             case MonitorContendedEntered(requestID_, thread, obj, location) =>
+                EventKind.MONITOR_CONTENDED_ENTERED.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 obj.toBuffer(buffer)
                 location.toBuffer(buffer)
             case MonitorWait(requestID_, thread, obj, location, timeout) =>
+                EventKind.MONITOR_WAIT.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 obj.toBuffer(buffer)
                 location.toBuffer(buffer)
                 timeout.toBuffer(buffer)
             case MonitorWaited(requestID_, thread, obj, location, timed_out) =>
+                EventKind.MONITOR_WAITED.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 obj.toBuffer(buffer)
                 location.toBuffer(buffer)
                 timed_out.toBuffer(buffer)
             case Exception(requestID_, thread, location, exception, catchLocation) =>
+                EventKind.EXCEPTION.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 exception.toBuffer(buffer)
                 catchLocation.toBuffer(buffer)
             case ThreadStart(requestID_, thread) =>
+                EventKind.THREAD_START.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
             case ThreadDeath(requestID_, thread) =>
+                EventKind.THREAD_DEATH.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
             case ClassPrepare(requestID_, thread, refTypeTag, refTypeID, signature, status) =>
+                EventKind.CLASS_PREPARE.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 refTypeTag.toBuffer(buffer)
@@ -115,9 +130,11 @@ enum Event(val requestID: Int) extends WriteableJdwpEntity:
                 signature.toBuffer(buffer)
                 status.toBuffer(buffer)
             case ClassUnload(requestID_, signature) =>
+                EventKind.CLASS_UNLOAD.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 signature.toBuffer(buffer)
             case FieldAccess(requestID_, thread, location, refTypeTag, refTypeID, fieldID, obj) =>
+                EventKind.FIELD_ACCESS.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
@@ -126,6 +143,7 @@ enum Event(val requestID: Int) extends WriteableJdwpEntity:
                 fieldID.toBuffer(buffer)
                 obj.toBuffer(buffer)
             case FieldModification(requestID_, thread, location, refTypeTag, refTypeID, fieldID, obj, valueToBe) =>
+                EventKind.FIELD_MODIFICATION.toBuffer(buffer)
                 requestID_.toBuffer(buffer)
                 thread.toBuffer(buffer)
                 location.toBuffer(buffer)
@@ -134,8 +152,6 @@ enum Event(val requestID: Int) extends WriteableJdwpEntity:
                 fieldID.toBuffer(buffer)
                 obj.toBuffer(buffer)
                 valueToBe.toBuffer(buffer)
-            
-        
 
 class Composite(
     val suspendPolicy: Byte,
@@ -159,7 +175,7 @@ object Composite extends BodyFromWire[Composite] {
         val reader = JdwpSizedReader(idSizes, buffer)
         val suspendPolicy = reader.read_int8()
         val eventCount = reader.read_int32()
-        val events = (0 until eventCount).map(_ => {
+        val events = (0 until eventCount).map(i => {
             val eventKind = reader.read_int8()
             val requestID = reader.read_int32()
             eventKind match

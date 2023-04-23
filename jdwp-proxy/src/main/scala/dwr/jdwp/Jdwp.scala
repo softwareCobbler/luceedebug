@@ -79,31 +79,31 @@ class ThreadID(val threadID: Long) extends AnyVal with WriteableJdwpEntity {
 }
 
 object EventKind {
-  final val SINGLE_STEP                   = 1
-  final val BREAKPOINT                    = 2
-  final val FRAME_POP                     = 3
-  final val EXCEPTION                     = 4
-  final val USER_DEFINED                  = 5
-  final val THREAD_START                  = 6
-  final val THREAD_DEATH                  = 7
-  final val THREAD_END                    = 7 // obsolete - was used in jvmdi
-  final val CLASS_PREPARE                 = 8
-  final val CLASS_UNLOAD                  = 9
-  final val CLASS_LOAD                    = 10
-  final val FIELD_ACCESS                  = 20
-  final val FIELD_MODIFICATION            = 21
-  final val EXCEPTION_CATCH               = 30
-  final val METHOD_ENTRY                  = 40
-  final val METHOD_EXIT                   = 41
-  final val METHOD_EXIT_WITH_RETURN_VALUE = 42
-  final val MONITOR_CONTENDED_ENTER       = 43
-  final val MONITOR_CONTENDED_ENTERED     = 44
-  final val MONITOR_WAIT                  = 45
-  final val MONITOR_WAITED                = 46
-  final val VM_START                      = 90
-  final val VM_INIT                       = 90 // obsolete - was used in jvmdi
-  final val VM_DEATH                      = 99
-  final val VM_DISCONNECTED               = 100 // Never sent across JDWP
+  final val SINGLE_STEP                   : Byte = 1
+  final val BREAKPOINT                    : Byte = 2
+  final val FRAME_POP                     : Byte = 3
+  final val EXCEPTION                     : Byte = 4
+  final val USER_DEFINED                  : Byte = 5
+  final val THREAD_START                  : Byte = 6
+  final val THREAD_DEATH                  : Byte = 7
+  final val THREAD_END                    : Byte = 7 // obsolete - was used in jvmdi
+  final val CLASS_PREPARE                 : Byte = 8
+  final val CLASS_UNLOAD                  : Byte = 9
+  final val CLASS_LOAD                    : Byte = 10
+  final val FIELD_ACCESS                  : Byte = 20
+  final val FIELD_MODIFICATION            : Byte = 21
+  final val EXCEPTION_CATCH               : Byte = 30
+  final val METHOD_ENTRY                  : Byte = 40
+  final val METHOD_EXIT                   : Byte = 41
+  final val METHOD_EXIT_WITH_RETURN_VALUE : Byte = 42
+  final val MONITOR_CONTENDED_ENTER       : Byte = 43
+  final val MONITOR_CONTENDED_ENTERED     : Byte = 44
+  final val MONITOR_WAIT                  : Byte = 45
+  final val MONITOR_WAITED                : Byte = 46
+  final val VM_START                      : Byte = 90
+  final val VM_INIT                       : Byte = 90 // obsolete - was used in jvmdi
+  final val VM_DEATH                      : Byte = 99
+  final val VM_DISCONNECTED               : Byte = 100 // Never sent across JDWP
 }
 
 object Tag {

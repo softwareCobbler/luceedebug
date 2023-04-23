@@ -13,21 +13,21 @@ import scala.util.Failure
 @main
 def ok() : Unit =
   LuceedebugJdwpProxy(
-    jdwpHost = "localhost",
-    jdwpPort = 9999,
-    luceeClientHost = "localhost",
-    luceeClientPort = 10000,
-    jvmClientHost = "localhost",
-    jvmClientPort = 10001,
+    actualJvmJdwpHost = "localhost",
+    actualJvmJdwpPort = 9999,
+    luceeDebugJdwpLoopbackHost = "localhost",
+    luceeDebugJdwpLoopbackPort = 10001,
+    javaDebugHost = "localhost",
+    javaDebugPort = 10002,
   )
 
 class LuceedebugJdwpProxy(
-  jdwpHost: String,
-  jdwpPort: Int,
-  luceeClientHost: String,
-  luceeClientPort: Int,
-  jvmClientHost: String,
-  jvmClientPort: Int
+  actualJvmJdwpHost: String,
+  actualJvmJdwpPort: Int,
+  luceeDebugJdwpLoopbackHost: String,
+  luceeDebugJdwpLoopbackPort: Int,
+  javaDebugHost: String,
+  javaDebugPort: Int
 ) {
   private class ProxyThread(val proxy: JdwpProxy, val thread: Thread)
   private val proxyThread = {
@@ -36,8 +36,8 @@ class LuceedebugJdwpProxy(
     lock.synchronized {
       val thread = new Thread(() => 
         new JdwpProxy(
-          jdwpHost,
-          jdwpPort, 
+          actualJvmJdwpHost,
+          actualJvmJdwpPort, 
           p => lock.synchronized {
             proxy = Some(p)
             lock.notify()
@@ -63,17 +63,24 @@ class LuceedebugJdwpProxy(
     socket.bind(inetAddr)
     socket.accept()
   
-  val luceeContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-lucee-frontend")))
+  val luceeContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-lucee-loopback")))
   val javaContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-java-frontend")))
   
   var lucee = connectLucee()
   var java = connectJava()
-  
+
+  /**
+    * luceedebug will remain connected the entire life of the vm
+    *
+    * @return
+    */
   private def connectLucee() : ConnectionState =
     Listening({
       implicit val context = luceeContext
       val future = Future {
-        val socket = listenOn(luceeClientHost, luceeClientPort)
+        println(s"[luceedebug-jdwp-proxy] listening jdwp connection A on ${luceeDebugJdwpLoopbackHost}:${luceeDebugJdwpLoopbackPort}")
+        val socket = listenOn(luceeDebugJdwpLoopbackHost, luceeDebugJdwpLoopbackPort)
+        println("[luceedebug-jdwp-proxy] got proxy conn A")
         proxyThread.proxy.createAndRegisterClient(
           "lucee-frontend",
           socket,
@@ -88,11 +95,16 @@ class LuceedebugJdwpProxy(
       future
     })
 
+  /**
+    * this connection will come and go as the frontend connects/disconnects
+    */
   private def connectJava() : ConnectionState =
     Listening({
       implicit val context = javaContext
       val future = Future {
-        val socket = listenOn(jvmClientHost, jvmClientPort)
+        println(s"[luceedebug-jdwp-proxy] listening jdwp connection B on ${javaDebugHost}:${javaDebugHost}")
+        val socket = listenOn(javaDebugHost, javaDebugPort)
+        println("[luceedebug-jdwp-proxy] got proxy conn B")
         proxyThread.proxy.createAndRegisterClient(
           "java-frontend",
           socket,
