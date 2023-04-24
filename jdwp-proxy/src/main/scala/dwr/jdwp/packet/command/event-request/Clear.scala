@@ -3,6 +3,7 @@ package dwr.jdwp.packet.command.event_request
 import dwr.jdwp.packet._
 import dwr.reader._
 import dwr.utils.{ByteWrangler}
+import scala.collection.IndexedSeqView
 
 class Clear(val eventKind: Byte, val requestID: Int) extends JdwpCommand with BodyToWire {
     val command = Command.EventRequest_Clear
@@ -18,7 +19,7 @@ class Clear(val eventKind: Byte, val requestID: Int) extends JdwpCommand with Bo
 }
 
 object Clear extends BodyFromWire[Clear] {
-    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : Clear =
+    def bodyFromWire(body: IndexedSeqView[Byte])(using idSizes: IdSizes) : Clear =
         val reader = JdwpSizedReader(idSizes, body)
         Clear(
             eventKind = reader.read_int8(),

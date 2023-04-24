@@ -2,6 +2,7 @@ package dwr.jdwp.packet.reply.virtual_machine
 
 import dwr.reader._
 import dwr.jdwp.packet.{BodyFromWire}
+import scala.collection.IndexedSeqView
 
 class IdSizes(
     val fieldIDSize: Int,
@@ -19,7 +20,7 @@ object IdSizes extends BodyFromWire[IdSizes] {
      */
     def dummy : IdSizes = IdSizes(-1,-1,-1,-1,-1)
 
-    def bodyFromWire(idSizes: IdSizes, body: Array[Byte]) : IdSizes =
+    def bodyFromWire(body: IndexedSeqView[Byte])(using idSizes: IdSizes) : IdSizes =
         val checkedReader = CheckedReader(body)
         IdSizes(
            fieldIDSize = checkedReader.read_int32(),

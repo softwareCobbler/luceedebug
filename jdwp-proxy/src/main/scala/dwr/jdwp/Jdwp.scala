@@ -42,7 +42,7 @@ implicit class StringOps(val v: String) extends AnyVal with WriteableJdwpEntity 
     buffer.addAll(v.getBytes(StandardCharsets.UTF_8)) // see docs on "modified utf8", this is probably wrong in some cases
 }
 
-final class Location(val typeTag: Byte, val classID: Long, val methodID: Long, val index: Long) extends WriteableJdwpEntity {
+final case class Location(val typeTag: Byte, val classID: Long, val methodID: Long, val index: Long) extends WriteableJdwpEntity {
   def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
     typeTag.toBuffer(buffer)
     classID.toBuffer(buffer)
@@ -50,7 +50,7 @@ final class Location(val typeTag: Byte, val classID: Long, val methodID: Long, v
     index.toBuffer(buffer)
 }
 
-final class TaggedObjectID(tag: Byte, value: Long) extends WriteableJdwpEntity {
+final class TaggedObjectID(tag: Byte, value: ObjectID) extends WriteableJdwpEntity {
   def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
     tag.toBuffer(buffer)
     value.toBuffer(buffer)
@@ -60,6 +60,11 @@ final class Value(tag: Byte, value: Long) extends WriteableJdwpEntity {
   def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
     tag.toBuffer(buffer)
     value.toBuffer(buffer)
+}
+
+final class ObjectID(value: Long) extends AnyVal with WriteableJdwpEntity {
+  def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit = writeObjectID(value, buffer)
+  def asLong : Long = value
 }
 
 private inline def write4Or8(size: Int, v: Long, buffer: ArrayBuffer[Byte]): Unit =
@@ -106,6 +111,12 @@ object EventKind {
   final val VM_DISCONNECTED               : Byte = 100 // Never sent across JDWP
 }
 
+object TypeTag {
+  final val CLASS     : Byte = 1
+  final val INTERFACE : Byte = 2
+  final val ARRAY     : Byte = 3
+}
+
 object Tag {
   final val ARRAY        : Byte = '['
   final val BYTE         : Byte = 'B'
@@ -138,4 +149,10 @@ object EventRequestModifier {
   final val STEP : Byte = 10
   final val INSTANCE_ONLY : Byte = 11
   final val SOURCE_NAME_MATCH : Byte = 12
+}
+
+object SuspendPolicy {
+  final val NONE : Byte = 0
+  final val EVENT_THREAD : Byte = 1
+  final val ALL : Byte = 2
 }

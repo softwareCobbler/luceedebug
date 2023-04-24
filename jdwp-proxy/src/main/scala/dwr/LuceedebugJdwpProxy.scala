@@ -9,113 +9,74 @@ import java.net.Socket
 import java.util.concurrent.Executors
 import scala.util.Success
 import scala.util.Failure
-
-@main
-def ok() : Unit =
-  LuceedebugJdwpProxy(
-    actualJvmJdwpHost = "localhost",
-    actualJvmJdwpPort = 9999,
-    luceeDebugJdwpLoopbackHost = "localhost",
-    luceeDebugJdwpLoopbackPort = 10001,
-    javaDebugHost = "localhost",
-    javaDebugPort = 10002,
-  )
+import java.net.Inet4Address
+import scala.annotation.tailrec
 
 class LuceedebugJdwpProxy(
   actualJvmJdwpHost: String,
   actualJvmJdwpPort: Int,
-  luceeDebugJdwpLoopbackHost: String,
-  luceeDebugJdwpLoopbackPort: Int,
   javaDebugHost: String,
   javaDebugPort: Int
 ) {
-  private class ProxyThread(val proxy: JdwpProxy, val thread: Thread)
-  private val proxyThread = {
-    var proxy : Option[JdwpProxy] = None
-    val lock = Object()
-    lock.synchronized {
-      val thread = new Thread(() => 
-        new JdwpProxy(
-          actualJvmJdwpHost,
-          actualJvmJdwpPort, 
-          p => lock.synchronized {
-            proxy = Some(p)
-            lock.notify()
-          }
-        )
-        (),
-        "luceedebug-jdwp-proxy"
-      )
-      thread.start()
-      lock.wait()
-      ProxyThread(proxy.get, thread)
-    }
+  println(s"[luceedebug-jdwp-proxy] starting proxy, with jvm jdwp target addr ${actualJvmJdwpHost}:${actualJvmJdwpPort}")
+
+  private val internalLuceedebugJdwpSocket = {
+    val addr = new InetSocketAddress("localhost", 0);
+    val socket = new ServerSocket()
+    socket.bind(addr)
+    socket
+  }
+  private val frontendJavaSocket = {
+    val addr = new InetSocketAddress(javaDebugHost, javaDebugPort);
+    val socket = new ServerSocket()
+    socket.bind(addr)
+    socket
   }
 
-  enum ConnectionState:
-    case Connected(client: ClientFacingProxyClient)
-    case Listening(client: Future[ClientFacingProxyClient])
-  import ConnectionState._
+  def getInternalLuceedebugHost() : String = internalLuceedebugJdwpSocket.getInetAddress().getHostAddress()
+  def getInternalLuceedebugPort() : Int = internalLuceedebugJdwpSocket.getLocalPort()
 
-  private def listenOn(host: String, port: Int) : Socket = 
-    val socket = new ServerSocket()
-    val inetAddr = new InetSocketAddress(host, port);
-    socket.bind(inetAddr)
-    socket.accept()
-  
-  val luceeContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-lucee-loopback")))
-  val javaContext : ExecutionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadScheduledExecutor(t => Thread(t, "ld-java-frontend")))
-  
-  var lucee = connectLucee()
-  var java = connectJava()
+  private class ProxyThreadHolder(val proxy: JdwpProxy, val thread: Thread)
+  private val proxyThread = {
+    val config = JdwpProxy.initProxyConfig(actualJvmJdwpHost, actualJvmJdwpPort)
+    val proxy = JdwpProxy(config)
+    val thread = new Thread(() => proxy.pumpPacketsUntilDisconnectBlocking(), "luceedebug-jdwp-proxy")
+    thread.start()
+    ProxyThreadHolder(proxy, thread)
+  }
 
-  /**
-    * luceedebug will remain connected the entire life of the vm
-    *
-    * @return
-    */
-  private def connectLucee() : ConnectionState =
-    Listening({
-      implicit val context = luceeContext
-      val future = Future {
-        println(s"[luceedebug-jdwp-proxy] listening jdwp connection A on ${luceeDebugJdwpLoopbackHost}:${luceeDebugJdwpLoopbackPort}")
-        val socket = listenOn(luceeDebugJdwpLoopbackHost, luceeDebugJdwpLoopbackPort)
-        println("[luceedebug-jdwp-proxy] got proxy conn A")
-        proxyThread.proxy.createAndRegisterClient(
-          "lucee-frontend",
-          socket,
-          () => connectLucee()
-        )
-      }
-      future.onComplete(v => {
-        v match
-          case Success(client) => { lucee = Connected(client) }
-          case Failure(e) => throw e
-      })
-      future
-    })
+  val luceeThread = {
+    val thread = new Thread(() => connectLucee(), "lucee-frontend-root")
+    thread.start()
+  }
+  var java = {
+    val thread = new Thread(() => connectJava(), "java-frontend-root")
+    thread.start()
+  }
 
   /**
-    * this connection will come and go as the frontend connects/disconnects
-    */
-  private def connectJava() : ConnectionState =
-    Listening({
-      implicit val context = javaContext
-      val future = Future {
-        println(s"[luceedebug-jdwp-proxy] listening jdwp connection B on ${javaDebugHost}:${javaDebugHost}")
-        val socket = listenOn(javaDebugHost, javaDebugPort)
-        println("[luceedebug-jdwp-proxy] got proxy conn B")
-        proxyThread.proxy.createAndRegisterClient(
-          "java-frontend",
-          socket,
-          () => connectJava(), 
-        )
-      }
-      future.onComplete(v => {
-        v match
-          case Success(client) => { java = Connected(client) }
-          case Failure(e) => throw e
-      })
-      future
-    })
+   * luceedebug will remain connected the entire life of the vm
+   */
+  @tailrec
+  private def connectLucee() : Unit =
+      println(s"[luceedebug-jdwp-proxy] listening for internal luceedebug jdwp loopback on ${getInternalLuceedebugHost()}:${getInternalLuceedebugPort()}")
+      val socket = internalLuceedebugJdwpSocket.accept()
+      socket.setTcpNoDelay(true) // important for many tiny ~20 byte jdwp messages
+      println(s"[luceedebug-jdwp-proxy] internal luceedebug jdwp loopback connected on ${getInternalLuceedebugHost()}:${getInternalLuceedebugPort()}")
+      val proxy = proxyThread.proxy.createAndRegisterClient("lucee-frontend", socket)
+      proxy.pumpPacketsUntilDisconnectBlocking()
+      connectLucee()
+
+  /**
+   * this connection will come and go as the frontend connects/disconnects
+   */
+  @tailrec
+  private def connectJava() : Unit =
+    println(s"[luceedebug-jdwp-proxy] listening for inbound java frontend connection on ${javaDebugHost}:${javaDebugPort}")
+    val socket = frontendJavaSocket.accept()
+    socket.setTcpNoDelay(true) // important for many tiny ~20 byte jdwp messages
+    println(s"[luceedebug-jdwp-proxy] java frontend connected on ${javaDebugHost}:${javaDebugPort}")
+    val proxy = proxyThread.proxy.createAndRegisterClient("java-frontend", socket)
+    proxy.pumpPacketsUntilDisconnectBlocking()
+    connectJava()
 }

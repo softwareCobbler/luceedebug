@@ -18,20 +18,30 @@ public class Agent {
      *
      * Note we have to repeat the jar path in the javaagent args, it would be nice to not require that.
      *
+     * -javaagent:/abspath/to/jarfile.jar=withSemiMixedMode,jdwpHost=jdwpHost,jdwpPort=1234,debugHost=debugHost,debugPort=5678,javaDebugHost=X,javaDebugPort=X,jdwpProxyHost=X,jdwpProxyPort=X,jarPath=/abspath/to/jarfile.jar
+     *
      */
     static class AgentArgs {
         /**
          * host/port for jdwp connection (i.e. JVM was spawned with libjdwp configured to listen to this)
-         * we will connect directly to this when cf spins up, and remain connected for the rest of cf's lifetime
+         * Luceedebug will connect directly to this when cf spins up, and remain connected for the rest of cf's lifetime
          */
         String jdwpHost;
         int jdwpPort;
 
         /**
-         * host/port for dap connection (i.e. IDE connects to this)
+         * host/port for lucee dap connection (i.e. IDE connects to this)
          */
-        String debugHost;
-        int debugPort;
+        String luceeDebugHost;
+        int luceeDebugPort;
+
+        /**
+         * if we're configured to accept 2 JDWP connections, to support (semi-)mixed-mode debugging,
+         * we need a port to listen on to accept the second connection.
+         */
+        boolean withSemiMixedMode = false;
+        String javaDebugHost;
+        int javaDebugPort;
 
         /**
          * Path to "this" jar, as in, the Jar that contains this Agent
@@ -41,17 +51,28 @@ public class Agent {
          */
         String jarPath;
 
-        AgentArgs(String argString) {
+        AgentArgs(String in_argString) {
             boolean gotJdwpHost = false;
             boolean gotJdwpPort = false;
-            boolean gotDebugHost = false;
-            boolean gotDebugPort = false;
+            boolean gotLuceeDebugHost = false;
+            boolean gotLuceeDebugPort = false;
             boolean gotJarPath = false;
+            boolean gotJavaDebugHost = false;
+            boolean gotJavaDebugPort = false;
+
+            String argString = in_argString;
+            {
+                final var semiMixedModeArg1 = "withSemiMixedMode,";
+                if (argString.startsWith(semiMixedModeArg1)) {
+                    argString = argString.substring(semiMixedModeArg1.length());
+                    withSemiMixedMode = true;
+                }
+            }
 
             for (var eachArg : argString.split(",")) {
                 final var nameAndValue = eachArg.split("=");
                 if (nameAndValue.length != 2) {
-                    throw new IllegalArgumentException("Invalid agent args string.");
+                    throw new IllegalArgumentException("Invalid agent args string `" + argString + "`.");
                 }
 
                 final var name = nameAndValue[0];
@@ -66,8 +87,8 @@ public class Agent {
                     case "cfhost":
                         // fallthrough (cfhost is deprecated in favor of debughost)
                     case "debughost": {
-                        debugHost = value;
-                        gotDebugHost = true;
+                        luceeDebugHost = value;
+                        gotLuceeDebugHost = true;
                         break;
                     }
                     case "jdwpport": {
@@ -83,19 +104,23 @@ public class Agent {
                     case "cfport":
                         // fallthrough (cfport is deprecated in favor of debugport)
                     case "debugport": {
-                        try {
-                            debugPort = Integer.parseInt(value);
-                            gotDebugPort = true;
-                        }
-                        catch (NumberFormatException e) {
-                            throw new IllegalArgumentException("Invalid debugPort value in agent args string (got '" + value + "' but expected an integer).");
-                        }
+                        luceeDebugPort = parseIntOrFailWithMsg(value, "Invalid debugPort value in agent args string (got '" + value + "' but expected an integer).");
+                        gotLuceeDebugPort = true;
                         break;
                     }
                     case "jarpath": {
                         jarPath = value;
                         gotJarPath = true;
                         break;
+                    }
+                    case "javadebughost": {
+                        javaDebugHost = value;
+                        gotJavaDebugHost = true;
+                        break;
+                    }
+                    case "javadebugport": {
+                        javaDebugPort = parseIntOrFailWithMsg(value, "Invalid javaDebugPort value in agent args string (got '" + value + "' but expected an integer).");
+                        gotJavaDebugPort = true;
                     }
                 }
             }
@@ -108,7 +133,7 @@ public class Agent {
                     doThrow = true;
                     errMsg.append(" jdwphost");
                 }
-                if (!gotDebugHost) {
+                if (!gotLuceeDebugHost) {
                     doThrow = true;
                     errMsg.append(" debughost");
                 }
@@ -116,7 +141,7 @@ public class Agent {
                     doThrow = true;
                     errMsg.append(" jdwpport");
                 }
-                if (!gotDebugPort) {
+                if (!gotLuceeDebugPort) {
                     doThrow = true;
                     errMsg.append(" debugport");
                 }
@@ -124,23 +149,49 @@ public class Agent {
                     doThrow = true;
                     errMsg.append(" jarpath");
                 }
+                if (withSemiMixedMode) {
+                    if (!gotJavaDebugHost) {
+                        doThrow = true;
+                        errMsg.append(" javaDebugHost (because 'withJdwpProxy' was specified)");
+                    }
+                    if (!gotJavaDebugPort) {
+                        doThrow = true;
+                        errMsg.append(" javaDebugPort (because 'withJdwpProxy' was specified)");
+                    }
+                }
                 if (doThrow) {
+                    System.err.println("[luceedebug] bad agent arg string `" + in_argString + "`");
                     throw new IllegalArgumentException(errMsg.toString());
                 }
+            }
+        }
+
+        private int parseIntOrFailWithMsg(String value, String msg) {
+            try {
+                return Integer.parseInt(value);
+            }
+            catch (NumberFormatException e) {
+                throw new IllegalArgumentException(msg);
             }
         }
     }
 
     public static void premain(String argString, Instrumentation inst) throws Throwable {
-        new dwr.LuceedebugJdwpProxy(
-            "localhost",
-            9999,
-            "localhost",
-            10001,
-            "localhost",
-            10002
-        );
         final var parsedArgs = new AgentArgs(argString);
+
+        String effectiveJdwpHost = parsedArgs.jdwpHost;
+        int effectiveJdwpPort = parsedArgs.jdwpPort;
+
+        if (parsedArgs.withSemiMixedMode) {
+            var proxy = new dwr.LuceedebugJdwpProxy(
+                /*actualJvmJdwpHost*/ parsedArgs.jdwpHost,
+                /*actualJvmJdwpPort*/ parsedArgs.jdwpPort,
+                /*javaDebugHost*/ parsedArgs.javaDebugHost,
+                /*javaDebugPort*/ parsedArgs.javaDebugPort
+            );
+            effectiveJdwpHost = proxy.getInternalLuceedebugHost();
+            effectiveJdwpPort = proxy.getInternalLuceedebugPort();
+        }
 
         if (!new File(parsedArgs.jarPath).exists()) {
             System.err.println("[luceedebug] couldn't find agent/instrumentation jar to add to bootstrap classloader");
@@ -179,7 +230,14 @@ public class Agent {
 
             final var config = new Config(Config.checkIfFileSystemIsCaseSensitive(parsedArgs.jarPath));
             System.out.println("[luceedebug] fs is case sensitive: " + config.getFsIsCaseSensitive());
-            final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort, config);
+            final var transformer = new LuceeTransformer(
+                classInjections,
+                effectiveJdwpHost,
+                effectiveJdwpPort,
+                parsedArgs.luceeDebugHost,
+                parsedArgs.luceeDebugPort,
+                config
+            );
             inst.addTransformer(transformer);
             transformer.makeSystemOutPrintlnSafeForUseInTransformer();
         }

@@ -7,6 +7,7 @@ import dwr.reader._
 import scala.collection.mutable.ArrayBuffer
 import dwr.utils.ByteWrangler
 import scala.collection.mutable
+import scala.collection.IndexedSeqView
 
 enum Event(val requestID: Int) extends WriteableJdwpEntity:
     case VMStart(requestID_ : Int, thread: ThreadID)
@@ -45,6 +46,27 @@ enum Event(val requestID: Int) extends WriteableJdwpEntity:
         extends Event(requestID_)
     case FieldModification(requestID_ : Int, thread: ThreadID, location: Location, refTypeTag: Byte, refTypeID: Long, fieldID: Long, obj: TaggedObjectID, valueToBe: Value)
         extends Event(requestID_)
+
+    def getThreadID() : Option[ThreadID] =
+        this match
+            case VMStart(_, thread) => Some(thread)
+            case VMDeath(_) => None
+            case SingleStep(_, thread, _) => Some(thread)
+            case Breakpoint(_, thread, _) => Some(thread)
+            case MethodEntry(_, thread, _) => Some(thread)
+            case MethodExit(_, thread, _) => Some(thread)
+            case MethodExitWithReturnValue(_, thread, _, _) => Some(thread)
+            case MonitorContendedEnter(_, thread, _, _) => Some(thread)
+            case MonitorContendedEntered(_, thread, _, _) => Some(thread)
+            case MonitorWait(_, thread, _, _, _) => Some(thread)
+            case MonitorWaited(_, thread, _, _, _) => Some(thread)
+            case Exception(_, thread, _, _, _) => Some(thread)
+            case ThreadStart(_, thread) => Some(thread)
+            case ThreadDeath(_, thread) => Some(thread)
+            case ClassPrepare(_, thread, _, _, _, _) => Some(thread)
+            case ClassUnload(_, _) => None
+            case FieldAccess(_, thread, _, _, _, _, _) => Some(thread)
+            case FieldModification(_, thread, _, _, _, _, _, _) => Some(thread)
 
     def toBuffer(buffer: ArrayBuffer[Byte])(using idSizes: IdSizes) : Unit =
         this match
@@ -169,7 +191,7 @@ class Composite(
 }
 
 object Composite extends BodyFromWire[Composite] {
-    def bodyFromWire(idSizes: IdSizes, buffer: Array[Byte]): Composite =
+    def bodyFromWire(buffer: IndexedSeqView[Byte])(using idSizes: IdSizes): Composite =
         import Event._
         import EventKind._
         val reader = JdwpSizedReader(idSizes, buffer)
