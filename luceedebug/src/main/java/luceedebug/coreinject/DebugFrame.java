@@ -94,7 +94,7 @@ public class DebugFrame implements IDebugFrame {
             this.form        = getScopeOrNull(() -> pageContext.formScope());
             this.local       = getScopeOrNull(() -> pageContext.localScope());
             this.request     = getScopeOrNull(() -> pageContext.requestScope());
-            this.session     = getScopeOrNull(() -> pageContext.sessionScope());
+            this.session     = getScopeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() == true ? pageContext.sessionScope() : null);
             this.server      = getScopeOrNull(() -> pageContext.serverScope());
             this.url         = getScopeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopeOrNull(() -> pageContext.variablesScope());
