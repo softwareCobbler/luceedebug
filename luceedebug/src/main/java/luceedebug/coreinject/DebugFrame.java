@@ -87,6 +87,11 @@ public class DebugFrame implements IDebugFrame {
             .weakKeys()
             .makeMap();
 
+        //
+        // Note that some of these `getScopeOrNull` calls need additional guards, to prevent from throwing
+        // expensive exceptions on literally every frame, e.g. if a scope is disabled by the engine and trying to touch it
+        // throws an ExpressionException.
+        //
         FrameContext(PageContext pageContext) {
             this.pageContext = pageContext;
             this.application = getScopeOrNull(() -> pageContext.applicationScope());
@@ -94,7 +99,7 @@ public class DebugFrame implements IDebugFrame {
             this.form        = getScopeOrNull(() -> pageContext.formScope());
             this.local       = getScopeOrNull(() -> pageContext.localScope());
             this.request     = getScopeOrNull(() -> pageContext.requestScope());
-            this.session     = getScopeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() == true ? pageContext.sessionScope() : null);
+            this.session     = getScopeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
             this.server      = getScopeOrNull(() -> pageContext.serverScope());
             this.url         = getScopeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopeOrNull(() -> pageContext.variablesScope());
