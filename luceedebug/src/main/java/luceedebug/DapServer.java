@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.lsp4j.debug.*;
@@ -62,7 +63,7 @@ public class DapServer implements IDebugProtocolServer {
         return applyPathTransforms(
             s,
             (transform, path) -> transform.ideToServer(path)
-        ).replaceAll("\\\\|/", File.separator);
+        ).replaceAll("\\\\|/", Matcher.quoteReplacement(File.separator));
     }
     
     private String applyPathTransformsCfToIde(String s) {
