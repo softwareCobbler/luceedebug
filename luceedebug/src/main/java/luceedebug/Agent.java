@@ -141,6 +141,25 @@ public class Agent {
         }
 
         System.setProperty("lucee.requesttimeout", "false");
+        //
+        // This used to be (and still is ...) accomplished by luceedebug/instrumenter/Felix.java
+        // where we instrument the Felix constructor (that we expect Lucee to be using) and stitch these values in.
+        // Lucee later added the ability to specify these as envvars or system properties, see:
+        //  - https://luceeserver.atlassian.net/browse/LDEV-4193
+        //  - https://github.com/lucee/Lucee/commit/ba63a11188f20fac04c6a69529c7cfc55023189e
+        //  - lucee tag 5.3.9.194
+        // But, we didn't take notice of this, and it didn't hurt to keep going the "add to boot delegation via instrumentation" route.
+        //
+        // In the changeset from 5.4.0.45 -> 5.4.0.46, lucee's Felix dependency was upgraded to major version 7 from major version 6.
+        // In ways that aren't clear, this broke the instrumentation based approach, and osgi classloaders couldn't find anything in `luceedebug.shadowjar.*`.
+        // Using the systemprop approach appears to be the solution to the breakage. We should investigate this to understand why the behavior changed.
+        //
+        // We also retain the instrumentation based approach for users who are on versions before 5.3.9.194.
+        // The two approaches appear to coexist without issue.
+        //
+        // See(lucee): loader/src/main/java/lucee/loader/engine/CFMLEngineFactory.java
+        //
+        System.setProperty("org.osgi.framework.bootdelegation", "com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug,luceedebug_shadow.*");
 
         try (var jarFile = new JarFile(parsedArgs.jarPath)) {
             inst.appendToSystemClassLoaderSearch(jarFile);
