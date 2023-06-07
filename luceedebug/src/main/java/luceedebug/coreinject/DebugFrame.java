@@ -39,7 +39,7 @@ public class DebugFrame implements IDebugFrame {
      * True if this cf frame's actual java method is "udfDefaultValue", see lucee source
      * This should be final and init'd via constructor but it's not a pressing issue.
      */
-    public boolean isFunctionDefaultValueInitializationFrame = false;
+    public boolean isUdfDefaultValueInitFrame = false;
 
     public String getSourceFilePath() { return sourceFilePath; };
     public long getId() { return id; }

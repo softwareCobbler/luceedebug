@@ -222,9 +222,19 @@ public class DapServer implements IDebugProtocolServer {
         return result;
     }
 
+    private boolean getBoolOrFalseIfNonBool(Object obj) {
+        return getAsBool(obj, false);
+    }
+
+    private boolean getAsBool(Object obj, boolean defaultValue) {
+        return obj instanceof Boolean ? ((Boolean)obj) : defaultValue;
+    }
+
     @Override
     public CompletableFuture<Void> attach(Map<String, Object> args) {
         pathTransforms = tryMungePathTransforms(args.get("pathTransforms"));
+
+        config_.setStepIntoUdfDefaultValueInitFrames(getBoolOrFalseIfNonBool(args.get("stepIntoUdfDefaultValueInitFrames")));
 
         clientProxy_.initialized();
 

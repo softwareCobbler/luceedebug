@@ -63,7 +63,11 @@ public class DebugManager implements IDebugManager {
         }
     }
 
+    // definitely non-null after spawnWorker
+    private Config config_ = null;
+
     public void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
+        config_ = config;
         final String threadName = "luceedebug-worker";
 
         System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
@@ -603,6 +607,10 @@ public class DebugManager implements IDebugManager {
     }
 
     private void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
+        if (frame.isUdfDefaultValueInitFrame && !config_.getStepIntoUdfDefaultValueInitFrames()) {
+            return;
+        }
+
         if (request.type == CfStepRequest.STEP_INTO) {
             // step in, every step is a valid step
             clearStepRequest(currentThread);
@@ -699,7 +707,7 @@ public class DebugManager implements IDebugManager {
 
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
         DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
-        frame.isFunctionDefaultValueInitializationFrame = true;
+        frame.isUdfDefaultValueInitFrame = true;
     }
 
     public void popCfFrame() {

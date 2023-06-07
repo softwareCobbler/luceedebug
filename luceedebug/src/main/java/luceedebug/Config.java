@@ -4,9 +4,17 @@ import java.io.File;
 
 public class Config {
     private final boolean fsIsCaseSensitive_;
+    private boolean stepIntoUdfDefaultValueInitFrames_ = true;
 
     Config(boolean fsIsCaseSensitive) {
         this.fsIsCaseSensitive_ = fsIsCaseSensitive;
+    }
+
+    public boolean getStepIntoUdfDefaultValueInitFrames() {
+        return this.stepIntoUdfDefaultValueInitFrames_;
+    }
+    public void setStepIntoUdfDefaultValueInitFrames(boolean v) {
+        this.stepIntoUdfDefaultValueInitFrames_ = v;
     }
 
     private static String invertCase(String path) {
