@@ -4,7 +4,9 @@ import java.io.File;
 
 public class Config {
     private final boolean fsIsCaseSensitive_;
-    private boolean stepIntoUdfDefaultValueInitFrames_ = true;
+    // we probably never want to step into this (the a=b in `function foo(a=b) { ... }` )
+    // but for now it's configurable
+    private boolean stepIntoUdfDefaultValueInitFrames_ = false;
 
     Config(boolean fsIsCaseSensitive) {
         this.fsIsCaseSensitive_ = fsIsCaseSensitive;

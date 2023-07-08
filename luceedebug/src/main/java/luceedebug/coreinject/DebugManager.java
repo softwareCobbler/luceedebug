@@ -4,6 +4,7 @@ import com.google.common.collect.MapMaker;
 import com.sun.jdi.Bootstrap;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.VirtualMachine;
+import com.sun.jdi.VirtualMachineManager;
 
 import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
@@ -82,7 +83,22 @@ public class DebugManager implements IDebugManager {
     }
 
     static private AttachingConnector getConnector() {
-        var vmm = Bootstrap.virtualMachineManager();
+        VirtualMachineManager vmm;
+        try {
+            vmm = Bootstrap.virtualMachineManager();
+        }
+        catch (NoClassDefFoundError e) {
+            if (e.getMessage().contains("com/sun/jdi/Bootstrap")) {
+                // this is a common error
+                System.out.println("[luceedebug]");
+                System.out.println("[luceedebug]");
+                System.out.println("[luceedebug] couldn't load a com.sun.jdi.VirtualMachineManager; you might not be running the JDK version of your Java release");
+                System.out.println("[luceedebug]");
+                System.out.println("[luceedebug]");
+            }
+            throw e;
+        }
+
         var attachingConnectors = vmm.attachingConnectors();
         for (var c : attachingConnectors) {
             if (c.name().equals("com.sun.jdi.SocketAttach")) {
@@ -595,6 +611,11 @@ public class DebugManager implements IDebugManager {
 
         Thread currentThread = Thread.currentThread();
         DebugFrame frame = getTopmostFrame(Thread.currentThread());
+
+        if (frame == null) {
+            // just popped last frame?
+            return;
+        }
 
         CfStepRequest request = stepRequestByThread.get(currentThread);
         if (request == null) {
