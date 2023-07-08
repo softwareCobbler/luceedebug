@@ -8,6 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.github.dockerjava.api.DockerClient;
@@ -65,7 +66,7 @@ class SteppingThroughDefaultArgs {
             final var dapServer = launcher.getRemoteProxy();
 
             DapUtils.init(dapServer).join();
-            DapUtils.attach(dapServer).join();
+            DapUtils.attach(dapServer, Map.of("stepIntoUdfDefaultValueInitFrames", (Object)Boolean.TRUE)).join();
 
             DapUtils
                 .setBreakpoints(dapServer, "/var/www/a.cfm", 10)

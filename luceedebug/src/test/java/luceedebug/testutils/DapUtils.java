@@ -2,6 +2,7 @@ package luceedebug.testutils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -60,7 +61,11 @@ public class DapUtils {
     }
     
     public static CompletableFuture<Void> attach(IDebugProtocolServer dapServer) {
-        return dapServer.attach(new HashMap<String,Object>());
+        return attach(dapServer, new HashMap<String,Object>());
+    }
+
+    public static CompletableFuture<Void> attach(IDebugProtocolServer dapServer, Map<String, Object> config) {
+        return dapServer.attach(config);
     }
 
     public static CompletableFuture<StackTraceResponse> getStackTrace(IDebugProtocolServer dapServer, int threadID) {
