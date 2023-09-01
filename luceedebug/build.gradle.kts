@@ -39,12 +39,8 @@ dependencies {
     // https://mvnrepository.com/artifact/com.google.http-client/google-http-client
     testImplementation("com.google.http-client:google-http-client:1.43.1")
 
-
-
-
     // https://mvnrepository.com/artifact/com.google.guava/guava
-    implementation("com.google.guava:guava:31.1-jre")
-
+    implementation("com.google.guava:guava:32.1.2-jre")
 
     implementation("org.ow2.asm:asm:9.3")
     implementation("org.ow2.asm:asm-util:9.3")
