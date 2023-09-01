@@ -212,3 +212,9 @@ Support for conditional breakpoints, watch expressions, and REPL evaluation.
 
 ### Debug breakpoint bindings
 If breakpoints aren't binding, you can inspect what's going using the "luceedebug: show class and breakpoint info" command. Surface this by typing "show class and breakpoint info" into the [command palette](https://code.visualstudio.com/docs/getstarted/userinterface#_command-palette).
+
+### Scan luceedebug Agent for Security Vulnerabilities
+
+```sh
+./gradlew dependencyCheckAnalyze
+```

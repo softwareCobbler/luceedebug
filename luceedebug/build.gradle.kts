@@ -13,6 +13,15 @@ import java.nio.file.Paths;
 plugins {
     java
     id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("org.owasp.dependencycheck") version "8.4.0" apply false
+}
+
+allprojects {
+    apply(plugin = "org.owasp.dependencycheck")
+}
+
+configure<org.owasp.dependencycheck.gradle.extension.DependencyCheckExtension> {
+    format = org.owasp.dependencycheck.reporting.ReportGenerator.Format.ALL.toString()
 }
 
 repositories {
