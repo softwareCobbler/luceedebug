@@ -173,6 +173,7 @@ public class DapServer implements IDebugProtocolServer {
     @Override
     public CompletableFuture<Capabilities> initialize(InitializeRequestArguments args) {
         var c = new Capabilities();
+        c.setSupportsEvaluateForHovers(true);
         c.setSupportsConfigurationDoneRequest(true);
         c.setSupportsSingleThreadExecutionRequests(true); // but, vscode does not (from the stack frame panel at least?)
 
