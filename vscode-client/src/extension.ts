@@ -108,6 +108,35 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// add hover for debugger
+	// TODO: replace naive regex matcher with better implementation
+	context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('cfml', {
+		provideEvaluatableExpression(document: vscode.TextDocument, position: vscode.Position): vscode.ProviderResult<vscode.EvaluatableExpression> {
+			/**
+			 * will match most variable declaration styles:
+			 * local.varName
+			 * varName
+			 * local.varName.subKey
+			 * local.varName['subKey']
+			 * local['varName'].subKey
+			 * local['varNam'][subKey]
+			 * local.varName["subKey"]
+			 * <cfquery name="queryName"> -> queryName
+			 * 
+			 * however will also match:
+			 * local.varName.functionCall()
+			 * "somestring.that.looks.like[a]variable" -> somestring.that.looks.like[a]variable
+			 * 
+			 */
+			let varRange = document.getWordRangeAtPosition(position, /[\w_][\w\[\]"'\._\-]+[\w\]]/ig);
+			varRange ??= document.getWordRangeAtPosition(position);
+			if(varRange !== undefined) {
+				return new vscode.EvaluatableExpression(varRange);
+			}
+			return undefined;
+		}
+	}));
+
 	// context.subscriptions.push(
 	// 	vscode.commands.registerCommand("luceeDebugger.showLoadedClasses", () => {
 	// 		currentDebugSession?.customRequest("showLoadedClasses");
