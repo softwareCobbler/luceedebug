@@ -128,8 +128,8 @@ export function activate(context: vscode.ExtensionContext) {
 			 * "somestring.that.looks.like[a]variable" -> somestring.that.looks.like[a]variable
 			 * 
 			 */
-			let varRange = document.getWordRangeAtPosition(position, /[\w_][\w\[\]"'\._\-]+[\w\]]/ig);
-			varRange ??= document.getWordRangeAtPosition(position);
+			const varRange = document.getWordRangeAtPosition(position, /[\w_][\w\[\]"'\._\-]+[\w\]]/ig) 
+								?? document.getWordRangeAtPosition(position);
 			if(varRange !== undefined) {
 				return new vscode.EvaluatableExpression(varRange);
 			}
