@@ -15,6 +15,8 @@ The VS Code client extension is available as `luceedebug` when searching in the 
 
 ## Java Agent
 
+Built jars are available via github 'releases'. The most recent build is https://github.com/softwareCobbler/luceedebug/releases/latest
+
 ### Build Agent Jar
 
 The following steps will build to: `./luceedebug/build/libs/luceedebug.jar`
