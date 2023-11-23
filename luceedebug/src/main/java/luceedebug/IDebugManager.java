@@ -14,6 +14,8 @@ public interface IDebugManager {
     }
     
     void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort);
+    void spawnWorkerInResponseToLuceeRestart(Config config);
+
     /**
      * most common frame type
      */

@@ -3,6 +3,9 @@ FROM lucee/lucee:5.3.10.120-tomcat9.0-jdk11-openjdk-2303
 ENV LUCEEDEBUG_JAR /build/luceedebug.jar
 ENV SETENV_FILE /usr/local/tomcat/bin/setenv.sh
 
+# configure admin password for lucee administrator UI @ http://<domain>/lucee/admin/server.cfm
+RUN echo luceedebug > /opt/lucee/server/lucee-server/context/password.txt
+
 #RUN apt-get update
 #RUN apt-get -y install vim
 

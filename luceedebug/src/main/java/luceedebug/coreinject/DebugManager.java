@@ -65,21 +65,30 @@ public class DebugManager implements IDebugManager {
     }
 
     // definitely non-null after spawnWorker
+    // can this be a constructor arg?
     private Config config_ = null;
 
     public void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort) {
         config_ = config;
         final String threadName = "luceedebug-worker";
 
-        System.out.println("[luceedebug] attempting jdwp self connect to jdwp on " + jdwpHost + ":" + jdwpPort + "...");
+        System.out.println("[luceedebug] jdwp self connect on " + jdwpHost + ":" + jdwpPort + "...");
 
         VirtualMachine vm = jdwpSelfConnect(jdwpHost, jdwpPort);
-        LuceeVm luceeVm = new LuceeVm(config, vm);
+        GlobalIDebugManagerHolder.luceeVm = new LuceeVm(config, vm, this);
 
         new Thread(() -> {
             System.out.println("[luceedebug] jdwp self connect OK");
-            DapServer.createForSocket(luceeVm, config, debugHost, debugPort);
+            DapServer.createForSocket(GlobalIDebugManagerHolder.luceeVm, config, debugHost, debugPort);
         }, threadName).start();
+    }
+
+    /**
+     * doesn't actually spawn anything, but the name is intended to be symmetric with the "other" spawnWorker
+     */
+    public void spawnWorkerInResponseToLuceeRestart(Config config) {
+        config_ = config;
+        GlobalIDebugManagerHolder.luceeVm.registerDebugManagerHooks(this);
     }
 
     static private AttachingConnector getConnector() {

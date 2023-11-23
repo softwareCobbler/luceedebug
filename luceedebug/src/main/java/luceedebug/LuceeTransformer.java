@@ -27,11 +27,16 @@ public class LuceeTransformer implements ClassFileTransformer {
     }
 
     /**
-     * if non-null, we are awaiting the initial class load of PageContextImpl
-     * When that happens, these classes will be injected into that class loader.
-     * Then, this should be set to null, since we don't need to hold onto them locally.
+     * Classes to add the lucee core class loader.
      */
-    private ClassInjection[] pendingCoreLoaderClassInjections;
+    private ClassInjection[] classInjections;
+    
+    /**
+     * Track if we've initialized at least once. A "server restart" (as opposed to a JVM restart)
+     * means we get new lucee classloaders, but the jvm-wide jdwp related things remain valid, and do not need to
+     * be reinitialized.
+     */
+    private boolean didInit = false;
 
     /**
      * this print stuff is debug related;
@@ -65,7 +70,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         int debugPort,
         Config config
     ) {
-        this.pendingCoreLoaderClassInjections = injections;
+        this.classInjections = injections;
 
         this.jdwpHost = jdwpHost;
         this.jdwpPort = jdwpPort;
@@ -93,19 +98,30 @@ public class LuceeTransformer implements ClassFileTransformer {
                 Method m = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, int.class, int.class);
                 m.setAccessible(true);
 
-                for (var injection : pendingCoreLoaderClassInjections) {
+                for (var injection : classInjections) {
                     // warn: reflection ... when does that become unsupported?
                     m.invoke(GlobalIDebugManagerHolder.luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
                 }
                 
-                pendingCoreLoaderClassInjections = null;
-
                 try {
                     final var klass = GlobalIDebugManagerHolder.luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
                     GlobalIDebugManagerHolder.debugManager = (IDebugManager)klass.getConstructor().newInstance();
 
                     System.out.println("[luceedebug] Loaded " + GlobalIDebugManagerHolder.debugManager + " with ClassLoader '" + GlobalIDebugManagerHolder.debugManager.getClass().getClassLoader() + "'");
-                    GlobalIDebugManagerHolder.debugManager.spawnWorker(config, jdwpHost, jdwpPort, debugHost, debugPort);
+
+                    if (didInit) {
+                        // on a server restart (which is NOT a JVM restart), we need to reuse all the existing JDWP and DAP machinery that is already bound to particular ports.
+                        // But, note that we did redo class injection and instrumentation, because the target classloader will have changed.
+                        // TODO: this doesn't get flushed to output during a restart, like stdout is wired up incorrectly during this time?
+                        System.out.println("[luceedebug] Lucee restart, reusing existing jdwp, dap server");
+
+                        GlobalIDebugManagerHolder.debugManager.spawnWorkerInResponseToLuceeRestart(config);
+                    }
+                    else {
+                        System.out.println("[luceedebug] Lucee startup, initializing jdwp, dap server");
+                        GlobalIDebugManagerHolder.debugManager.spawnWorker(config, jdwpHost, jdwpPort, debugHost, debugPort);
+                        didInit = true;
+                    }
                 }
                 catch (Throwable e) {
                     e.printStackTrace();

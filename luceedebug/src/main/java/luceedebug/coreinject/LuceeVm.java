@@ -325,7 +325,7 @@ public class LuceeVm implements ILuceeVm {
         return new JdwpStaticCallable(((ClassType)refType.classObject().reflectedType()), jdwp_getThread);
     }
 
-    public LuceeVm(Config config, VirtualMachine vm) {
+    public LuceeVm(Config config, VirtualMachine vm, IDebugManager debugManager) {
         this.config_ = config;
         this.vm_ = vm;
         this.asyncWorker_.start();
@@ -337,8 +337,12 @@ public class LuceeVm implements ILuceeVm {
         bootClassTracking();
 
         bootThreadTracking();
+        
+        registerDebugManagerHooks(debugManager);
+    }
 
-        GlobalIDebugManagerHolder.debugManager.registerCfStepHandler((thread, distanceToFrame) -> {
+    public void registerDebugManagerHooks(IDebugManager debugManager) {
+        debugManager.registerCfStepHandler((thread, distanceToFrame) -> {
             final var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
             final var done = new AtomicBoolean(false);
 

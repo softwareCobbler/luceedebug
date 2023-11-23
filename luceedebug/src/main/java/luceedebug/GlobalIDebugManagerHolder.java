@@ -11,4 +11,5 @@ public class GlobalIDebugManagerHolder {
     // would that happen alot in a dev environment where you want to hook up a debugger?
     public static ClassLoader luceeCoreLoader;
     public static IDebugManager debugManager;
+    public static ILuceeVm luceeVm;
 }

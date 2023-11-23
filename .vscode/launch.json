@@ -11,5 +11,18 @@
             "hostName": "localhost",
             "port": 9999
         },
+        {
+            "type": "cfml",
+            "name": "luceedebug",
+            "request": "attach",
+            "hostName": "localhost",
+            "port": 10000,
+            "pathTransforms": [
+                {
+                    "idePrefix": "c:\\Users\\anon\\dev\\luceedebug\\java-agent\\test\\docker\\",
+                    "serverPrefix": "/var/www/"
+                }
+            ]
+        }
     ]
 }
