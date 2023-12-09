@@ -10,6 +10,7 @@ import lucee.runtime.type.Collection.Key;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -24,6 +25,12 @@ import luceedebug.*;
 
 public class DebugFrame implements IDebugFrame {
     static private AtomicLong nextId = new AtomicLong(0);
+
+    /**
+     * It's not 100% clear that our instrumentation to walk captured closure scopes will always be valid across all class loaders,
+     * and we assume that if it fails once, we should disable it across the entire program.
+     */
+    static private boolean closureScopeGloballyDisabled = false;
 
     private ValTracker valTracker;
     private RefTracker<CfEntityRef> refTracker;
@@ -82,6 +89,9 @@ public class DebugFrame implements IDebugFrame {
         final lucee.runtime.type.scope.Scope server;
         final lucee.runtime.type.scope.Scope url;
         final lucee.runtime.type.scope.Variables variables;
+        
+        // lazy init because it (might?) be expensive to walk scope chains eagerly every frame
+        private ArrayList<lucee.runtime.type.scope.ClosureScope> capturedScopeChain = null;
 
         static private final ConcurrentMap<PageContext, Object> activeFrameLockByPageContext = new MapMaker()
             .weakKeys()
@@ -103,6 +113,36 @@ public class DebugFrame implements IDebugFrame {
             this.server      = getScopeOrNull(() -> pageContext.serverScope());
             this.url         = getScopeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopeOrNull(() -> pageContext.variablesScope());
+        }
+
+        public ArrayList<lucee.runtime.type.scope.ClosureScope> getCapturedScopeChain() {
+            if (capturedScopeChain == null) {
+                capturedScopeChain = getCapturedScopeChain(variables);
+            }
+            return capturedScopeChain;
+        }
+
+        private static ArrayList<lucee.runtime.type.scope.ClosureScope> getCapturedScopeChain(lucee.runtime.type.scope.Scope variables) {
+            if (variables instanceof lucee.runtime.type.scope.ClosureScope) {
+                final var setLike_seen = new IdentityHashMap<>();
+                final var result = new ArrayList<lucee.runtime.type.scope.ClosureScope>();
+                var scope = variables;
+                while (scope instanceof lucee.runtime.type.scope.ClosureScope) {
+                    final var captured = (lucee.runtime.type.scope.ClosureScope)scope;
+                    if (setLike_seen.containsKey(captured)) {
+                        break;
+                    }
+                    else {
+                        setLike_seen.put(captured, true);
+                    }
+                    result.add(captured);
+                    scope = captured.getVariables();
+                }
+                return result;
+            }
+            else {
+                return new ArrayList<>();
+            }
         }
 
         interface SupplierOrNull<T> {
@@ -206,6 +246,25 @@ public class DebugFrame implements IDebugFrame {
         checkedPutScopeRef("server", frameContext_.server);
         checkedPutScopeRef("url", frameContext_.url);
         checkedPutScopeRef("variables", frameContext_.variables);
+
+        if (!closureScopeGloballyDisabled) {
+            final var scopeChain = frameContext_.getCapturedScopeChain();
+            final int captureChainLen = scopeChain.size();
+            try {
+                for (int i = 0; i < captureChainLen; i++) {
+                    // this should always succeed, there's no casting into a luceedebug shim type
+                    checkedPutScopeRef("captured arguments " + i, scopeChain.get(i).getArgument());
+                    // this could potentially fail with a class cast exception
+                    checkedPutScopeRef("captured local " + i, ((ClosureScopeLocalScopeAccessorShim)scopeChain.get(i)).getLocalScope());
+                }
+            }
+            catch (ClassCastException e) {
+                // We'll be left with possibly some capture scopes in the list this time around,
+                // but all subsequent calls to this method will be guarded by this assignment.
+                closureScopeGloballyDisabled = true;
+                return;
+            }
+        }
     }
 
     /**

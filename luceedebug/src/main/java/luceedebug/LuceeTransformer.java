@@ -5,8 +5,6 @@ import java.lang.reflect.Method;
 
 import org.objectweb.asm.*;
 
-import luceedebug.instrumenter.CfmOrCfc;
-
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 
@@ -85,6 +83,9 @@ public class LuceeTransformer implements ClassFileTransformer {
 
         if (className.equals("org/apache/felix/framework/Felix")) {
             return instrumentFelix(classfileBuffer, loader);
+        }
+        else if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
+            return instrumentClosureScope(classfileBuffer);
         }
         else if (className.equals("lucee/runtime/PageContextImpl")) {
             GlobalIDebugManagerHolder.luceeCoreLoader = loader;
@@ -180,6 +181,26 @@ public class LuceeTransformer implements ClassFileTransformer {
             return null;
         }
     }
+
+    private byte[] instrumentClosureScope(final byte[] classfileBuffer) {
+        var classWriter = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+
+        try {
+            var instrumenter = new luceedebug.instrumenter.ClosureScope(Opcodes.ASM9, classWriter);
+            var classReader = new ClassReader(classfileBuffer);
+
+            classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);
+
+            return classWriter.toByteArray();
+        }
+        catch (Throwable e) {
+            System.err.println("[luceedebug] exception during attempted classfile rewrite");
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+            return null;
+        }
+    }
     
     private byte[] instrumentCfmOrCfc(final byte[] classfileBuffer, ClassReader reader, String className) {
         byte[] stepInstrumentedBuffer = classfileBuffer;
@@ -191,7 +212,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         };
 
         try {
-            var instrumenter = new CfmOrCfc(Opcodes.ASM9, classWriter, className);
+            var instrumenter = new luceedebug.instrumenter.CfmOrCfc(Opcodes.ASM9, classWriter, className);
             var classReader = new ClassReader(stepInstrumentedBuffer);
 
             classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);
