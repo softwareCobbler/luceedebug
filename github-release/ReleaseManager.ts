@@ -81,10 +81,13 @@ async function doit() {
     }
 
     // sanity check that the target tag from env is the currently checked out version
-    const tagCommit = child_process.execSync(`cd .. && git rev-list -n 1 ${tag}`).toString()
-    const currentCommit = child_process.execSync(`cd .. && git rev-list -n 1 HEAD`).toString()
+    const tagCommit = child_process.execSync(`cd .. && git rev-list -n 1 ${tag}`).toString().trim()
+    const currentCommit = child_process.execSync(`cd .. && git rev-list -n 1 HEAD`).toString().trim()
 
     if (tagCommit !== currentCommit) {
+        console.error("tagCommit=" + tagCommit)
+        console.error("currentCommit=" + currentCommit)
+        console.error("target tag (from env)=" + tag)
         throw Error("target commit based on supplied tag is not current HEAD?")
     }
 
