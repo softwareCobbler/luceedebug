@@ -530,7 +530,18 @@ public class LuceeVm implements ILuceeVm {
                 catch (Throwable e) {
                     // discard
                 }
-                System.out.println("[luceedebug] class information for reftype " + name + " could not be retrieved.");
+
+                if (name.contains("lucee.commons.lang.MemoryClassLoader")) {
+                    //
+                    // Suppress logging for names like "class 1cs8o747dipwu (loaded by instance of lucee.commons.lang.MemoryClassLoader(id=2152))"
+                    //
+                    // Typically this means "ephemeral class loaded as part of an IDE expression eval request"
+                    // so it's not important to indicate we couldn't do anything with it
+                    //
+                }
+                else {
+                    System.out.println("[luceedebug] class information for reftype " + name + " could not be retrieved.");
+                }
                 return;
             }
 
