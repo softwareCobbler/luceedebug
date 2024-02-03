@@ -390,6 +390,7 @@ public class DebugManager implements IDebugManager {
                                     // assignment to result var of a name of our choosing is expected safe because:
                                     //  - prefix shouldn't clash with user variables
                                     //  - we are synchronized on PageContext by virtue of `doWorkInThisFrame`
+                                    //  - we delete it after grabbing the result
                                     // At this time, `lucee.runtime.compiler.Renderer.loadPage` will
                                     // cache compilations based on the hash of the source text; so, using the same result name
                                     // every time ensures we don't need to recompile a particular expression every time.
@@ -412,6 +413,7 @@ public class DebugManager implements IDebugManager {
                                     );
 
                                     Object evalResult = frame.getFrameContext().variables.get(resultName);
+                                    frame.getFrameContext().variables.remove(resultName);
 
                                     if (evalResult instanceof Map) {
                                         Map<String, Object> struct = (Map)evalResult;
