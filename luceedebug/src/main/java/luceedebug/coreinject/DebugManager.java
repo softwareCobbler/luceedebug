@@ -19,6 +19,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -36,6 +37,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 import javax.servlet.ServletException;
+
+import static lucee.loader.engine.CFMLEngine.DIALECT_CFML;
 
 import luceedebug.*;
 
@@ -384,7 +387,54 @@ public class DebugManager implements IDebugManager {
                             .doWorkInThisFrame((Supplier<Either<String,Object>>)() -> {
                                 try {
                                     lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
-                                    return Either.Right(lucee.runtime.functions.dynamicEvaluation.Evaluate.call(frame.getFrameContext().pageContext, new String[]{expr}));
+                                    // assignment to result var of a name of our choosing is expected safe because:
+                                    //  - prefix shouldn't clash with user variables
+                                    //  - we are synchronized on PageContext by virtue of `doWorkInThisFrame`
+                                    // At this time, `lucee.runtime.compiler.Renderer.loadPage` will
+                                    // cache compilations based on the hash of the source text; so, using the same result name
+                                    // every time ensures we don't need to recompile a particular expression every time.
+                                    final String resultName = "__luceedebug__evalResult";
+                                    final String srcText = ""
+                                        + "<cfscript>"
+                                        + "variables['" + resultName + "'] = "
+                                        + "(() => {"
+                                            + "try { return {'ok': true, 'result': " + expr + " } }"
+                                            + "catch (any e) { return {'ok': false, 'result': e.message } }"
+                                        + "})();"
+                                        + "</cfscript>";
+
+                                    lucee.runtime.compiler.Renderer.tag(
+                                        /*PageContext pc*/ frame.getFrameContext().pageContext,
+                                        /*String cfml*/ srcText,
+                                        /*int dialect*/ DIALECT_CFML,
+                                        /*boolean catchOutput*/ false,
+                                        /*boolean ignoreScopes*/ false
+                                    );
+
+                                    Object evalResult = frame.getFrameContext().variables.get(resultName);
+
+                                    if (evalResult instanceof Map) {
+                                        Map<String, Object> struct = (Map)evalResult;
+                                        var isOk = struct.get("ok");
+                                        var result = struct.get("result");
+                                        if (isOk instanceof Boolean) {
+                                            if ((Boolean)isOk) {
+                                                return Either.Right(result);
+                                            }
+                                            else {
+                                                var msg = result instanceof String ? (String)result : "Couldn't evaluate expression - expression threw an exception, but resulting message was non-string";
+                                                return Either.Left(msg);
+                                            }
+                                        }
+                                        else {
+                                            var isOkClassName = isOk == null ? "null" : isOk.getClass().getName();
+                                            return Either.Left("Couldn't evaluate expression - result `ok` property was non-boolean (got " + isOkClassName + ")");
+                                        }
+                                    }
+                                    else {
+                                        var evalResultClassName = evalResult == null ? "null" : evalResult.getClass().getName();
+                                        return Either.Left("Evaluated expression returned non-Map result of type '" + evalResultClassName + "'");
+                                    }
                                 }
                                 catch (Throwable e) {
                                     return Either.Left(e.getMessage());

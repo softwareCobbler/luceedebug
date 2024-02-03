@@ -163,7 +163,7 @@ public class DebugFrame implements IDebugFrame {
         }
 
         // if we're mutating some page context's frame information in place, we should only do it on one thread at a time.
-        static private <T> T withFrameLock(PageContext pageContext, Supplier<T> f) {
+        static private <T> T withPageContextLock(PageContext pageContext, Supplier<T> f) {
             // lazy create the lock if it doesn't exist yet
             synchronized(activeFrameLockByPageContext.computeIfAbsent(pageContext, (_x) -> new Object())) {
                 return f.get();
@@ -177,7 +177,7 @@ public class DebugFrame implements IDebugFrame {
          * and then restore everything we swapped out.
          */
         public <T> T doWorkInThisFrame(Supplier<T> f)  {
-            return withFrameLock(pageContext, () -> {
+            return withPageContextLock(pageContext, () -> {
                 final var saved_argumentsScope = getScopeOrNull(() -> pageContext.argumentsScope());
                 final var saved_localScope = getScopeOrNull(() -> pageContext.localScope());
                 final var saved_variablesScope = getScopeOrNull(() -> pageContext.variablesScope());
