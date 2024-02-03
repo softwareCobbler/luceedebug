@@ -397,11 +397,8 @@ public class DebugManager implements IDebugManager {
                                     final String resultName = "__luceedebug__evalResult";
                                     final String srcText = ""
                                         + "<cfscript>"
-                                        + "variables['" + resultName + "'] = "
-                                        + "(() => {"
-                                            + "try { return {'ok': true, 'result': " + expr + " } }"
-                                            + "catch (any e) { return {'ok': false, 'result': e.message } }"
-                                        + "})();"
+                                        + "try { variables['" + resultName + "'] = {'ok': true, 'result': " + expr + " } }"
+                                        + "catch (any e) { variables['" + resultName + "'] = {'ok': false, 'result': e.message } }"
                                         + "</cfscript>";
 
                                     lucee.runtime.compiler.Renderer.tag(
