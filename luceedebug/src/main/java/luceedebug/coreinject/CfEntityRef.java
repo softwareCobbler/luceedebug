@@ -59,11 +59,6 @@ class CfEntityRef implements ICfEntityRef {
         final boolean namedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.NAMED;
         final boolean indexedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.INDEXED;
 
-        if (cfEntity.wrapped instanceof Component && namedOK) {
-            @SuppressWarnings("unchecked")
-            var m = (Map<String, Object>)((Component)cfEntity.wrapped).getComponentScope();
-            return getAsMaplike(m);
-        }
         if (cfEntity.wrapped instanceof Map && namedOK) {
             @SuppressWarnings("unchecked")
             var m = (Map<String, Object>)cfEntity.wrapped;
@@ -84,11 +79,8 @@ class CfEntityRef implements ICfEntityRef {
         
         Set<Map.Entry<String,Object>> entries = map.entrySet();
 
-        // cfc<Foo> {m1: thing, m2: thing, this: cfc<Foo>}
-        // expanding 'this' -> {m1: thing, getM1: lucee.runtime.type.UDFGetter, m2: thing, ...}
-        // If expanding "this", show functionLikes,
-        // otherwise, we're expanding a direct ref, and we don't want to show functionLikes
-        final var skipFunctionLikes = map instanceof lucee.runtime.ComponentScope && !this.name.toLowerCase().equals("this");
+        // We had been showing member functions on component instances, but it's really just noise. Maybe this could be a configurable option.
+        final var skipFunctionLikes = true;
         
         for (Map.Entry<String, Object> entry : entries) {
             IDebugEntity val = maybeNull_asValue(entry.getKey(), entry.getValue(), skipFunctionLikes);

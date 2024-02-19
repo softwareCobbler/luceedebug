@@ -191,7 +191,15 @@ public class CfmOrCfc extends ClassVisitor {
         // e.g. `udfCall` is an empty method with zero bytecodes, but `udfCall1` is non-empty, etc.
         
 
-        if (!isWrappingMethod && (name.equals("call") || name.startsWith("udfCall") || name.equals("initComponent") || name.equals("newInstance") || name.equals("threadCall") || name.startsWith("udfDefaultValue"))) {
+        if (!isWrappingMethod && (
+            name.equals("call")
+            || name.startsWith("udfCall")
+            || name.equals("initComponent")
+            || name.equals("newInstance")
+            || name.equals("threadCall")
+            || name.startsWith("udfDefaultValue")
+            || name.equals("staticConstructor")
+        )) {
             final String delegateToName = "__luceedebug__" + name;
             createWrapperMethod(access, name, descriptor, signature, exceptions, delegateToName);
 

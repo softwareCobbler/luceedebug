@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -89,6 +90,9 @@ public class DebugFrame implements IDebugFrame {
         final lucee.runtime.type.scope.Scope server;
         final lucee.runtime.type.scope.Scope url;
         final lucee.runtime.type.scope.Variables variables;
+        // n.b. the `this` scope does not derive from Scope
+        final lucee.runtime.type.Struct this_;
+        final lucee.runtime.type.scope.Scope static_;
         
         // lazy init because it (might?) be expensive to walk scope chains eagerly every frame
         private ArrayList<lucee.runtime.type.scope.ClosureScope> capturedScopeChain = null;
@@ -113,6 +117,27 @@ public class DebugFrame implements IDebugFrame {
             this.server      = getScopelikeOrNull(() -> pageContext.serverScope());
             this.url         = getScopelikeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopelikeOrNull(() -> pageContext.variablesScope());
+            this.this_       = getScopelikeOrNull(() -> {
+                // there is also `PageContextImpl.thisGet()` but it can create a `this` property on the variables scope, which seems like
+                // something we don't want to do, since it mutates the user's scopes instead of just reading from them.
+                if (this.variables instanceof lucee.runtime.ComponentScope) {
+                    // The `this` scope IS the component, bound to the variables scope that is an instanceof ComponentScope
+                    // (which means ComponentScope is a variables scope containing a THIS scope, rather than ComponentScope IS the this scope)
+                    // Alternatively we could just lookup the `this` property on `variables`.
+                    return ((lucee.runtime.ComponentScope)this.variables).getComponent();
+                }
+                else if (this.variables instanceof lucee.runtime.type.scope.ClosureScope) {
+                    // A closure scope is a variables scope wrapper containing a variable scope.
+                    // Probably we could test here for if the closureScope contains a component scope, but just looking for `this` seems to be fine.
+                    return (lucee.runtime.type.Struct)this.variables.get("this");
+                }
+                else {
+                    return null;
+                }
+            });
+
+            // If we have a `this` scope, meaning we are in a component, then we should have a static scope.
+            this.static_ = this.this_ instanceof lucee.runtime.Component ? ((lucee.runtime.Component)this.this_).staticScope() : null;
         }
 
         public ArrayList<lucee.runtime.type.scope.ClosureScope> getCapturedScopeChain() {
@@ -223,8 +248,7 @@ public class DebugFrame implements IDebugFrame {
         return frameName;
     }
 
-    private void checkedPutScopeRef(String name, lucee.runtime.type.scope.Scope scope) {
-
+    private void checkedPutScopeRef(String name, Map<?,?> scope) {
         if (scope != null && !(scope instanceof LocalNotSupportedScope)) {
             scopes_.put(name, CfEntityRef.freshRef(valTracker, refTracker, name, scope));
         }
@@ -243,7 +267,9 @@ public class DebugFrame implements IDebugFrame {
         checkedPutScopeRef("local", frameContext_.local);
         checkedPutScopeRef("request", frameContext_.request);
         checkedPutScopeRef("session", frameContext_.session);
+        checkedPutScopeRef("static", frameContext_.static_);
         checkedPutScopeRef("server", frameContext_.server);
+        checkedPutScopeRef("this", frameContext_.this_);
         checkedPutScopeRef("url", frameContext_.url);
         checkedPutScopeRef("variables", frameContext_.variables);
 
