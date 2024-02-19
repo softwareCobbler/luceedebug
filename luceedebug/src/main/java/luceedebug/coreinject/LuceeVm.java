@@ -477,34 +477,33 @@ public class LuceeVm implements ILuceeVm {
      * this must be jdwp event handler safe (i.e. not deadlock the event handler)
      */
     private void trackThreadReference(ThreadReference threadRef) {
-        asyncWorker_.queueWork(() -> {
-            try {
-                final List<? extends Value> args = Arrays.asList(threadRef);
-                final var v = (LongValue) jdwp_getThread.classType.invokeMethod(
-                    JDWP_WORKER_THREADREF,
-                    jdwp_getThread.method,
-                    args,
-                    ObjectReference.INVOKE_SINGLE_THREADED
-                );
+        try {
+            final List<? extends Value> args = Arrays.asList(threadRef);
+            final var v = (LongValue) jdwp_getThread.classType.invokeMethod(
+                JDWP_WORKER_THREADREF,
+                jdwp_getThread.method,
+                args,
+                ObjectReference.INVOKE_SINGLE_THREADED
+            );
 
-                final long key = v.value();
-                final Thread thread = JdwpWorker.jdwp_getThreadResult(key);
-                threadMap_.register(thread, threadRef);
-            }
-            catch (ObjectCollectedException e) {
-                if (JDWP_WORKER_THREADREF.isCollected()) {
-                    System.out.println("[luceedebug] fatal: JDWP_WORKER_THREADREF is collected");
-                    System.exit(1);
-                }
-                else {
-                    // discard
-                }
-            }
-            catch (Throwable e) {
-                e.printStackTrace();
+            final long key = v.value();
+            final Thread thread = JdwpWorker.jdwp_getThreadResult(key);
+            threadMap_.register(thread, threadRef);
+        }
+        catch (ObjectCollectedException e) {
+            if (JDWP_WORKER_THREADREF.isCollected()) {
+                // this should never be collected
+                System.out.println("[luceedebug] fatal: JDWP_WORKER_THREADREF is collected");
                 System.exit(1);
             }
-        });
+            else {
+                // discard, can't track a thread that got collected
+            }
+        }
+        catch (Throwable e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
     }
 
     /**
@@ -639,7 +638,6 @@ public class LuceeVm implements ILuceeVm {
 
     public ThreadReference[] getThreadListing() {
         var result = new ArrayList<ThreadReference>();
-        
         for (var threadRef : threadMap_.threadRefByThread.values()) {
             result.add(threadRef);
         }
