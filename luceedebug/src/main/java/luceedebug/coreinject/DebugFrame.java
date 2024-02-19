@@ -104,15 +104,15 @@ public class DebugFrame implements IDebugFrame {
         //
         FrameContext(PageContext pageContext) {
             this.pageContext = pageContext;
-            this.application = getScopeOrNull(() -> pageContext.applicationScope());
-            this.arguments   = getScopeOrNull(() -> pageContext.argumentsScope());
-            this.form        = getScopeOrNull(() -> pageContext.formScope());
-            this.local       = getScopeOrNull(() -> pageContext.localScope());
-            this.request     = getScopeOrNull(() -> pageContext.requestScope());
-            this.session     = getScopeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
-            this.server      = getScopeOrNull(() -> pageContext.serverScope());
-            this.url         = getScopeOrNull(() -> pageContext.urlScope());
-            this.variables   = getScopeOrNull(() -> pageContext.variablesScope());
+            this.application = getScopelikeOrNull(() -> pageContext.applicationScope());
+            this.arguments   = getScopelikeOrNull(() -> pageContext.argumentsScope());
+            this.form        = getScopelikeOrNull(() -> pageContext.formScope());
+            this.local       = getScopelikeOrNull(() -> pageContext.localScope());
+            this.request     = getScopelikeOrNull(() -> pageContext.requestScope());
+            this.session     = getScopelikeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
+            this.server      = getScopelikeOrNull(() -> pageContext.serverScope());
+            this.url         = getScopelikeOrNull(() -> pageContext.urlScope());
+            this.variables   = getScopelikeOrNull(() -> pageContext.variablesScope());
         }
 
         public ArrayList<lucee.runtime.type.scope.ClosureScope> getCapturedScopeChain() {
@@ -153,7 +153,7 @@ public class DebugFrame implements IDebugFrame {
         // scopes that are "garbage" scopes ("LocalNotSupportedScope") should be filtered away elsewhere
         // we especially are interested in when we swap out scopes during expression evaluation that we restore the scopes
         // as they were prior to; which might be troublesome if "getting a scope throws so we return null, but it doesn't make sense to restore the scope to null"
-        private <T> T getScopeOrNull(SupplierOrNull<T> f) {
+        private <T> T getScopelikeOrNull(SupplierOrNull<T> f) {
             try {
                 return f.get();
             }
@@ -178,9 +178,9 @@ public class DebugFrame implements IDebugFrame {
          */
         public <T> T doWorkInThisFrame(Supplier<T> f)  {
             return withPageContextLock(pageContext, () -> {
-                final var saved_argumentsScope = getScopeOrNull(() -> pageContext.argumentsScope());
-                final var saved_localScope = getScopeOrNull(() -> pageContext.localScope());
-                final var saved_variablesScope = getScopeOrNull(() -> pageContext.variablesScope());
+                final var saved_argumentsScope = getScopelikeOrNull(() -> pageContext.argumentsScope());
+                final var saved_localScope = getScopelikeOrNull(() -> pageContext.localScope());
+                final var saved_variablesScope = getScopelikeOrNull(() -> pageContext.variablesScope());
                 try {
                     pageContext.setFunctionScopes(local, arguments);
                     pageContext.setVariablesScope(variables);
