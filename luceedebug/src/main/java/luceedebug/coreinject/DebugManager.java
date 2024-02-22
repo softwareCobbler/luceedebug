@@ -740,11 +740,11 @@ public class DebugManager implements IDebugManager {
         return stack.get(stack.size() - 1);
     }
 
-    public void pushCfFrame(PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
-        pushCfFrame_worker(pageContext, sourceFilePath, minDistanceToLuceedebugStepNotificationEntryFrame);
+    public void pushCfFrame(PageContext pageContext, String sourceFilePath) {
+        pushCfFrame_worker(pageContext, sourceFilePath);
     }
     
-    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
+    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath) {
         Thread currentThread = Thread.currentThread();
 
         ArrayList<DebugFrame> stack = cfStackByThread.get(currentThread);
@@ -774,8 +774,8 @@ public class DebugManager implements IDebugManager {
         return frame;
     }
 
-    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
-        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, minDistanceToLuceedebugStepNotificationEntryFrame);
+    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath) {
+        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath);
         frame.isUdfDefaultValueInitFrame = true;
     }
 

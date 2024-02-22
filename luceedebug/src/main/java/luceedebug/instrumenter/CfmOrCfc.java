@@ -31,9 +31,9 @@ public class CfmOrCfc extends ClassVisitor {
     static class IDebugManager_t {
         static final Type type = Type.getType("Lluceedebug/IDebugManager;");
         // pushCfFrame : (_ : PageContext, filenameAbsPath : string, distanceToFrame : int) => void
-        static final Method m_pushCfFrame = Method.getMethod("void pushCfFrame(lucee.runtime.PageContext, String, int)");
+        static final Method m_pushCfFrame = Method.getMethod("void pushCfFrame(lucee.runtime.PageContext, String)");
         // pushCfFunctionDefaultValueInitializationFrame : (_ : PageContext, filenameAbsPath : string, distanceToFrame : int) => void
-        static final Method m_pushCfFunctionDefaultValueInitializationFrame = Method.getMethod("void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext, String, int)");
+        static final Method m_pushCfFunctionDefaultValueInitializationFrame = Method.getMethod("void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext, String)");
         // popCfFrame : () => void 
         static final Method m_popCfFrame = Method.getMethod("void popCfFrame()");
         // step : (currentLine : int) => void
@@ -103,9 +103,6 @@ public class CfmOrCfc extends ClassVisitor {
                     
                     ga.push(sourceName);
                     // [IDebugManager_t, PageContext, String]
-
-                    ga.push(1); // 1 frame from the method we're in (which is the actual frame)
-                    // [IDebugManager_t, PageContext, String, int]
 
                     if (name.startsWith("udfDefaultValue")) {
                         ga.invokeInterface(IDebugManager_t.type, IDebugManager_t.m_pushCfFunctionDefaultValueInitializationFrame);

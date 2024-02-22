@@ -17,13 +17,13 @@ public interface IDebugManager {
     /**
      * most common frame type
      */
-    public void pushCfFrame(lucee.runtime.PageContext pc, String filenameAbsPath, int distanceToFrame);
+    public void pushCfFrame(lucee.runtime.PageContext pc, String sourceFilePath);
     /**
      * a "default value initialization frame" is the frame that does default function value init,
      * like setting a,b,c in the following:
      * `function foo(a=1,b=2,c=3) {}; foo(42);` <-- init frame will be stepped into twice, once for `b`, once for `c`; `a` is not default init'd
      */
-    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame);
+    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath);
     public void popCfFrame();
 
     // these method names are "magic" in that they serve as tags
