@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -20,6 +21,9 @@ import com.sun.jdi.event.*;
 import com.sun.jdi.request.*;
 import com.google.common.collect.MapMaker;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import luceedebug.*;
 import luceedebug.IDebugManager.CfStepCallback;
@@ -156,7 +160,7 @@ public class LuceeVm implements ILuceeVm {
     }
 
     private final ThreadMap threadMap_ = new ThreadMap();
-    private final AsyncWorker asyncWorker_ = new AsyncWorker();
+    private final ExecutorService stepHandlerExecutor = Executors.newSingleThreadExecutor();
     private final ConcurrentHashMap</*canonical sourceAbsPath*/ String, ArrayList<ReplayableCfBreakpointRequest>> replayableBreakpointRequestsByAbsPath_ = new ConcurrentHashMap<>();
     private final ConcurrentHashMap</*canonical absPath*/ String, KlassMap> klassMap_ = new ConcurrentHashMap<>();
     private long JDWP_WORKER_CLASS_ID = 0;
@@ -330,7 +334,6 @@ public class LuceeVm implements ILuceeVm {
     public LuceeVm(Config config, VirtualMachine vm) {
         this.config_ = config;
         this.vm_ = vm;
-        this.asyncWorker_.start();
         
         initEventPump();
 
@@ -354,7 +357,7 @@ public class LuceeVm implements ILuceeVm {
             // Maybe it is good that we support either / or
             // (i.e. the passed in thread may or may not be the current thread, we should 'just work' in either case)
             //
-            asyncWorker_.queueWork(() -> {
+            CompletableFuture.runAsync(() -> {
                 try {
                     threadRef.suspend();
                     
@@ -423,7 +426,7 @@ public class LuceeVm implements ILuceeVm {
                     e.printStackTrace();
                     System.exit(1);
                 }
-            });
+            }, stepHandlerExecutor);
 
             // We might spin a little here, but the majority of the wait
             // will be conducted while this thread is suspended.
