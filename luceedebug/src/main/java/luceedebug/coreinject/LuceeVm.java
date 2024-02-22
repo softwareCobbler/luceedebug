@@ -18,11 +18,11 @@ import java.util.stream.Collectors;
 import com.sun.jdi.*;
 import com.sun.jdi.event.*;
 import com.sun.jdi.request.*;
-
 import com.google.common.collect.MapMaker;
 import java.util.concurrent.ConcurrentMap;
 
 import luceedebug.*;
+import luceedebug.IDebugManager.CfStepCallback;
 
 public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
@@ -325,6 +325,8 @@ public class LuceeVm implements ILuceeVm {
         return new JdwpStaticCallable(((ClassType)refType.classObject().reflectedType()), jdwp_getThread);
     }
 
+    private static final int SIZEOF_INSTR_INVOKE_INTERFACE = 5;
+    
     public LuceeVm(Config config, VirtualMachine vm) {
         this.config_ = config;
         this.vm_ = vm;
@@ -338,10 +340,10 @@ public class LuceeVm implements ILuceeVm {
 
         bootThreadTracking();
 
-        GlobalIDebugManagerHolder.debugManager.registerCfStepHandler((thread, distanceToFrame) -> {
+        GlobalIDebugManagerHolder.debugManager.registerCfStepHandler((thread, minDistanceToLuceedebugBaseFrame) -> {
             final var threadRef = threadMap_.getThreadRefByThreadOrFail(thread);
             final var done = new AtomicBoolean(false);
-
+            
             //
             // Have to do this on a seperate thread in order to suspend the supplied thread,
             // which by current design will always be the current thread.
@@ -355,42 +357,67 @@ public class LuceeVm implements ILuceeVm {
             asyncWorker_.queueWork(() -> {
                 try {
                     threadRef.suspend();
-                    // "current location in frame + 3" is expected to be immediately after `invokeVirtual`
-                    // which we have magic knowledge about. The design is that the cf frame is currently on an `invokeVirtual`
-                    // instruction, which is how we got here. We want to resume the thread but then immediately stop after
-                    // returning from the invokeVirtual. Using jdwp breakpoints in this way, instead of
-                    // the perhaps more obvious jdwp step-notifications approach, avoids dropping the jvm into interpreted mode.
-                    //
-                    // Thread filter considerations, troubleshooting weird "stepping across thread" behavior.
-                    // currentLoc + 3 might be (handwavingly)
-                    //   udfCallN():
-                    //   bc 0 <-- you are here
-                    //   bc +3 <-- jumping here
-                    //   bc +6
-                    //   ...
-                    // But it's possible that the bc+3 represents a jump target from a switch dispatch table or elsewhere,
-                    // (which is commonly used to dispatch local functions), and we are at the end of a control flow,
-                    // where we've just scheduled work, whose code begins at bc+3, on a separate thread, as in
-                    //
-                    // (suspended on this line) | scheduleWork(() => {/* stepping over this can land on another thread */})
-                    //
-                    // So we want to add a thread filter to prevent weird jumps across threads.
-                    //
-                    // It's not clear why we'd match such a step events up from the step event handler though.
-                    //
-                    final var frame = threadRef.frame(distanceToFrame);
-                    final var location = frame.location().method().locationOfCodeIndex(frame.location().codeIndex() + 3);
-
-                    final var bp = vm_.eventRequestManager().createBreakpointRequest(location);
-                    bp.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
-                    bp.addThreadFilter(threadRef); // can we jump threads? seems like it doing something like linkedBlockingDeque.offer(new Runnable(() => ...)) ?
-                    bp.addCountFilter(1);
-                    bp.setEnabled(true);
                     
-                    steppingStatesByThread.put(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint); // races with step handlers ?
+                    /**
+                     * Start the search for the "step notification entry frame" from `minDistanceToLuceedebugBaseFrame`,
+                     * which is the count of "frames we've definitely passed through to get to that point on the thread".
+                     * We can't know exactly how many frames because of at least the non-determinism of whether the target
+                     * thread has entered into AtomicBoolean.get() prior to being suspended.
+                     * 
+                     * The stack on the target thread looks something like this:
+                     * 
+                     * 1) AtomicBoolean.get() // might be on stack, might not be yet; either way, the target thread is suspended
+                     * 2) IDebugManager.CfStepCallback.call() // the outer lambda here
+                     * 3) <...various DebugManager frames...>
+                     * 4) DebugManager step handler frame
+                     * 5) topmost lucee frame on an InvokeInterface instruction, getting us into DebugManager step handler
+                     * 6) <...various Lucee frames...>
+                     * 
+                     * We want to scan until we find (4). Once we've found (4), the frame below it is guaranteed to be the topmost lucee frame
+                     * that we want to return to. We can't "just" scan for the topmost lucee frame because we don't know its name or
+                     * really anything about it. Our contract with ourselves is that the method call from (5) into (4) is an InvokeInterface
+                     * instruction, and with that we can know which bytecode index to set our next breakpoint at.
+                     * 
+                     * We loop until `Integer.MAX_VALUE`, but, really that means "until all frames have been iterated over".
+                     * We should __always__ be able to find the target frame here.
+                     *  - We should find the target frame after only a few (1 or 2) iterations
+                     *  - If we don't find it in the first few, we'll iterate through the whole stack, and once we do `threadRef.frame(X)`
+                     *    where X is larger than the number of frames on the stack, we'll get an exception.
+                     */
+                    for (int i = minDistanceToLuceedebugBaseFrame; i < Integer.MAX_VALUE; i++) {
+                        if (DebugManager.isStepNotificationEntryFunc(threadRef.frame(i).location().method().name())) {
+                            var stepInvokingCfFrame = threadRef.frame(i+1);
+                            var location = stepInvokingCfFrame
+                                .location()
+                                .method()
+                                .locationOfCodeIndex(
+                                    // frame is executing an invokeInterface instruction;
+                                    // set the next breakpoint exactly after this instruction.
+                                    stepInvokingCfFrame
+                                        .location()
+                                        .codeIndex() + SIZEOF_INSTR_INVOKE_INTERFACE
+                                );
+                            
+                            final var bp = vm_.eventRequestManager().createBreakpointRequest(location);
+                            bp.setSuspendPolicy(EventRequest.SUSPEND_EVENT_THREAD);
+                            bp.addThreadFilter(threadRef);
+                            bp.addCountFilter(1);
+                            bp.setEnabled(true);
+                            
+                            steppingStatesByThread.put(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint); // races with step handlers ?
+    
+                            done.set(true);
+                            continue_(threadRef);
+                            return;
+                        }
+                        else {
+                            continue;
+                        }
+                    }
 
-                    continue_(threadRef);
-                    done.set(true);
+                    // We'll either have found the target frame and did the work and returned,
+                    // or asked for one frame past the last frame which will have thrown an exception.
+                    throw new RuntimeException("unreachable");
                 }
                 catch (Throwable e) {
                     e.printStackTrace();
@@ -398,11 +425,10 @@ public class LuceeVm implements ILuceeVm {
                 }
             });
 
-            // We'll get here, and the thread may or may not be suspended yet.
-            // But, `done` will not be true until the work is done.
-            // The worker will suspend *this* thread, then do stuff, and then unsuspend it.
-            // After unspending it, the worker will set done=true and we will be unblocked
-            while (!done.get()); // wait here is ~10ms
+            // We might spin a little here, but the majority of the wait
+            // will be conducted while this thread is suspended.
+            // We'll have set done=true prior to resuming this thread.
+            while (!done.get()); // about ~8ms to queueWork + wait for work to complete
         });
     }
 

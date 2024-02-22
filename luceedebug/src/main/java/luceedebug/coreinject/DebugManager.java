@@ -525,9 +525,9 @@ public class DebugManager implements IDebugManager {
     public void registerCfStepHandler(CfStepCallback cb) {
         didStepCallback = cb;
     }
-    private void notifyStep(Thread thread, int distanceToJvmFrame) {
+    private void notifyStep(Thread thread, int minDistanceToLuceedebugStepNotificationEntryFrame) {
         if (didStepCallback != null) {
-            didStepCallback.call(thread, distanceToJvmFrame + 1);
+            didStepCallback.call(thread, minDistanceToLuceedebugStepNotificationEntryFrame + 1);
         }
     }
 
@@ -635,8 +635,12 @@ public class DebugManager implements IDebugManager {
         stepRequestByThread.remove(thread);
     }
 
-    public void step(int lineNumber) {
-        final int distanceToActualFrame = 1; // hardcoded expectation that we were invoked directly from the cf classfile
+    static public boolean isStepNotificationEntryFunc(String methodName) {
+        return methodName.startsWith("luceedebug_stepNotificationEntry_");
+    }
+
+    public void luceedebug_stepNotificationEntry_step(int lineNumber) {
+        final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
         Thread currentThread = Thread.currentThread();
         DebugFrame frame = maybeUpdateTopmostFrame(currentThread, lineNumber); // should be "definite update topmost frame", we 100% expect there to be a frame
 
@@ -646,7 +650,7 @@ public class DebugManager implements IDebugManager {
         }
         else {
             request.__debug__steps++;
-            maybeNotifyOfStepCompletion(currentThread, frame, request, distanceToActualFrame + 1, System.nanoTime());
+            maybeNotifyOfStepCompletion(currentThread, frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
         }
     }
 
@@ -655,8 +659,8 @@ public class DebugManager implements IDebugManager {
      * This is different that "did the frame get popped", because if an exception was thrown, we won't return to the callsite even though the frame does get popped.
      * So we want the debugger to return to the callsite in the normal case, but jump to any catch/finally blocks in the exceptional case.
      */
-    public void stepAfterCompletedUdfCall() {
-        final int distanceToActualFrame = 1; // hardcoded expectation that we were invoked directly from the cf classfile
+    public void luceedebug_stepNotificationEntry_stepAfterCompletedUdfCall() {
+        final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
 
         Thread currentThread = Thread.currentThread();
         DebugFrame frame = getTopmostFrame(Thread.currentThread());
@@ -672,11 +676,11 @@ public class DebugManager implements IDebugManager {
         }
         else {
             request.__debug__steps++;
-            maybeNotifyOfStepCompletion(currentThread, frame, request, distanceToActualFrame + 1, System.nanoTime());
+            maybeNotifyOfStepCompletion(currentThread, frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
         }
     }
 
-    private void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int distanceToActualFrame, long start) {
+    private void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int minDistanceToLuceedebugStepNotificationEntryFrame, long start) {
         if (frame.isUdfDefaultValueInitFrame && !config_.getStepIntoUdfDefaultValueInitFrames()) {
             return;
         }
@@ -684,7 +688,7 @@ public class DebugManager implements IDebugManager {
         if (request.type == CfStepRequest.STEP_INTO) {
             // step in, every step is a valid step
             clearStepRequest(currentThread);
-            notifyStep(currentThread, distanceToActualFrame + 1);
+            notifyStep(currentThread, minDistanceToLuceedebugStepNotificationEntryFrame + 1);
         }
         else if (request.type == CfStepRequest.STEP_OVER) {
             if (frame.getDepth() > request.startDepth) {
@@ -701,7 +705,7 @@ public class DebugManager implements IDebugManager {
                 // System.out.println("    " + request.__debug__steps + " cf steps in " + elapsed_ms + "ms for " + stepsPerMs + " steps/ms, overhead was " + (request.__debug__stepOverhead / 1e6) + "ms");
 
                 clearStepRequest(currentThread);
-                notifyStep(currentThread, distanceToActualFrame + 1);
+                notifyStep(currentThread, minDistanceToLuceedebugStepNotificationEntryFrame + 1);
             }
         }
         else if (request.type == CfStepRequest.STEP_OUT) {
@@ -711,7 +715,7 @@ public class DebugManager implements IDebugManager {
             }
             else {
                 clearStepRequest(currentThread);
-                notifyStep(currentThread, distanceToActualFrame + 1);
+                notifyStep(currentThread, minDistanceToLuceedebugStepNotificationEntryFrame + 1);
             }
         }
         else {
@@ -736,16 +740,11 @@ public class DebugManager implements IDebugManager {
         return stack.get(stack.size() - 1);
     }
 
-    /**
-     * distanceToActualFrame would be zero from within the actual frame,
-     * then 1 from one call deep, and 2 for 2 calls deep (probably we are 2), etc.
-     * each caller bumps it until we get here
-     */
-    public void pushCfFrame(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
-        pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
+    public void pushCfFrame(PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
+        pushCfFrame_worker(pageContext, sourceFilePath, minDistanceToLuceedebugStepNotificationEntryFrame);
     }
     
-    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
+    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
         Thread currentThread = Thread.currentThread();
 
         ArrayList<DebugFrame> stack = cfStackByThread.get(currentThread);
@@ -775,8 +774,8 @@ public class DebugManager implements IDebugManager {
         return frame;
     }
 
-    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame) {
-        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, distanceToActualFrame);
+    public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int minDistanceToLuceedebugStepNotificationEntryFrame) {
+        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath, minDistanceToLuceedebugStepNotificationEntryFrame);
         frame.isUdfDefaultValueInitFrame = true;
     }
 

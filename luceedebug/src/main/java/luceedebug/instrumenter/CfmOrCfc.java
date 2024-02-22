@@ -37,9 +37,9 @@ public class CfmOrCfc extends ClassVisitor {
         // popCfFrame : () => void 
         static final Method m_popCfFrame = Method.getMethod("void popCfFrame()");
         // step : (currentLine : int) => void
-        static final Method m_step = Method.getMethod("void step(int)");
+        static final Method m_step = Method.getMethod("void luceedebug_stepNotificationEntry_step(int)");
         // stepAfterCompletedUdfCall : () => void
-        static final Method m_stepAfterCompletedUdfCall = Method.getMethod("void stepAfterCompletedUdfCall()");
+        static final Method m_stepAfterCompletedUdfCall = Method.getMethod("void luceedebug_stepNotificationEntry_stepAfterCompletedUdfCall()");
     }
 
     static class GlobalIDebugManagerHolder_t {

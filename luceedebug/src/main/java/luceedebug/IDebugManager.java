@@ -10,7 +10,7 @@ import java.util.ArrayList;
  */
 public interface IDebugManager {
     public interface CfStepCallback {
-        void call(Thread thread, int distanceToJvmFrame);
+        void call(Thread thread, int minDistanceToLuceedebugBaseFrame);
     }
     
     void spawnWorker(Config config, String jdwpHost, int jdwpPort, String debugHost, int debugPort);
@@ -26,8 +26,11 @@ public interface IDebugManager {
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath, int distanceToActualFrame);
     public void popCfFrame();
 
-    public void step(int currentLine);
-    public void stepAfterCompletedUdfCall();
+    // these method names are "magic" in that they serve as tags
+    // when scanning the stack for "where did we transition from lucee to luceedebug code".
+    // These must be the only "entry points" from lucee compiled CF files into luceedebug.
+    public void luceedebug_stepNotificationEntry_step(int currentLine);
+    public void luceedebug_stepNotificationEntry_stepAfterCompletedUdfCall();
 
     public void registerStepRequest(Thread thread, int stepType);
     public void clearStepRequest(Thread thread);
