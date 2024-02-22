@@ -23,10 +23,8 @@ import com.google.common.collect.MapMaker;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import luceedebug.*;
-import luceedebug.IDebugManager.CfStepCallback;
 
 public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
