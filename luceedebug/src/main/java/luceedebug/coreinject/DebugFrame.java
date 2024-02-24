@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 import com.google.common.collect.MapMaker;
 
 import luceedebug.*;
-import luceedebug.coreinject.CfEntityRef.MarkerTrait;
+import luceedebug.coreinject.CfValueDebuggerBridge.MarkerTrait;
 
 public class DebugFrame implements IDebugFrame {
     static private AtomicLong nextId = new AtomicLong(0);
@@ -52,7 +52,7 @@ public class DebugFrame implements IDebugFrame {
 
     // lazy initialized on request for scopes
     // This is "scopes, wrapped with trackable IDs, which are expensive to create and cleanup"
-    private LinkedHashMap<String, CfEntityRef> scopes_ = null;
+    private LinkedHashMap<String, CfValueDebuggerBridge> scopes_ = null;
 
     // the results of evaluating complex expressions need to be kept alive for the entirety of the frame
     // these should be made gc'able when this frame is collected
@@ -248,7 +248,7 @@ public class DebugFrame implements IDebugFrame {
         if (scope != null && !(scope instanceof LocalNotSupportedScope)) {
             var v = new MarkerTrait.Scope(scope);
             pin(v);
-            scopes_.put(name, new CfEntityRef(this, v));
+            scopes_.put(name, new CfValueDebuggerBridge(this, v));
         }
     }
 
@@ -320,8 +320,8 @@ public class DebugFrame implements IDebugFrame {
         return result;
     }
 
-    CfEntityRef trackEvalResult(Object obj) {
+    CfValueDebuggerBridge trackEvalResult(Object obj) {
         pin(obj);
-        return new CfEntityRef(this, obj);
+        return new CfValueDebuggerBridge(this, obj);
     }
 }

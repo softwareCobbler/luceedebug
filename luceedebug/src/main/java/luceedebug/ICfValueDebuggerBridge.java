@@ -1,6 +1,6 @@
 package luceedebug;
 
-public interface ICfEntityRef {
+public interface ICfValueDebuggerBridge {
     public long getID();
     public int getNamedVariablesCount();
     public int getIndexedVariablesCount();

@@ -11,13 +11,12 @@ import lucee.runtime.type.Array;
 
 import luceedebug.*;
 
-// CfValue
-class CfEntityRef implements ICfEntityRef {
+class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     private final DebugFrame frame;
     public final Object obj;
     public final long id;
 
-    public CfEntityRef(DebugFrame frame, Object obj) {
+    public CfValueDebuggerBridge(DebugFrame frame, Object obj) {
         this.frame = frame;
         this.obj = obj;
         this.id = frame.valTracker.idempotentRegisterObject(obj).id;

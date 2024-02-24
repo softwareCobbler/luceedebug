@@ -331,7 +331,7 @@ public class DebugManager implements IDebugManager {
         return result.value;
     }
 
-    public Either</*err*/String, /*ok*/Either<ICfEntityRef, String>> evaluate(Long frameID, String expr) {
+    public Either</*err*/String, /*ok*/Either<ICfValueDebuggerBridge, String>> evaluate(Long frameID, String expr) {
         final var frame = frameByFrameID.get(frameID);
         if (frame != null) {
             return doEvaluate(frame, expr)
@@ -525,7 +525,7 @@ public class DebugManager implements IDebugManager {
         if (ref == null) {
             return new IDebugEntity[0];
         }
-        return CfEntityRef.getAsDebugEntity(valTracker, ref.wrapped, maybeNull_which);
+        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.wrapped, maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -792,7 +792,7 @@ public class DebugManager implements IDebugManager {
         else {
             return ref.wrapped == null
                 ? null
-                : CfEntityRef.getSourcePath(ref.wrapped);
+                : CfValueDebuggerBridge.getSourcePath(ref.wrapped);
         }
     }
 }
