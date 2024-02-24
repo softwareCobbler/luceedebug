@@ -6,34 +6,20 @@ import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.VirtualMachineManager;
 
-import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.IOException;
 import java.lang.ref.Cleaner;
 import java.lang.ref.WeakReference;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.SocketException;
-
 import lucee.runtime.PageContext;
-import lucee.runtime.PageContextImpl; // compiles fine, but IDE says it doesn't resolve
 import lucee.runtime.exp.PageException;
 
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 import javax.servlet.ServletException;
@@ -173,7 +159,7 @@ public class DebugManager implements IDebugManager {
     // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
     // presumably all complex values have a ref + a variable? One too many layers of indirection?
     synchronized private Either<Object, String> findEntity(int variableID) {
-        final var ref = refTracker.maybeGetFromId(variableID);
+        final var ref = valTracker.maybeGetFromId(variableID);
         if (ref == null) {
             return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
         }
@@ -182,9 +168,7 @@ public class DebugManager implements IDebugManager {
         // as in some actual null value like `{someValue: null}`
         final var entity = ref.wrapped == null
             ? null // shouldn't happen
-            : ref.wrapped.cfEntity == null
-            ? null // shouldn't happen
-            : ref.wrapped.cfEntity.wrapped;
+            : ref.wrapped;
 
         return Either.Left(entity);
     }
@@ -514,13 +498,6 @@ public class DebugManager implements IDebugManager {
      */
     private ValTracker valTracker = new ValTracker(cleaner);
 
-    /**
-     * An entityRef is a named reference to an entity. There can be many entityRefs for a single entity.
-     * Each entity ref has a unique ID. e.g. `local.foo` and `variables.foo` and `arguments.bar` may all point to the same entity, but they
-     * are different entityRefs. Once created, it is not possible to look them up by object identity, they must be looked up by ID.
-     */
-    private RefTracker<CfEntityRef> refTracker = new RefTracker<>(valTracker, cleaner);
-
     private CfStepCallback didStepCallback = null;
     public void registerCfStepHandler(CfStepCallback cb) {
         didStepCallback = cb;
@@ -544,11 +521,11 @@ public class DebugManager implements IDebugManager {
      * @maybeNull_which --> null means "any type"
      */
     synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
-        RefTracker.Wrapper_t<CfEntityRef> cfEntityRef = refTracker.maybeGetFromId(id);
-        if (cfEntityRef == null) {
+        var ref = valTracker.maybeGetFromId(id);
+        if (ref == null) {
             return new IDebugEntity[0];
         }
-        return cfEntityRef.wrapped.getAsDebugEntity(maybeNull_which);
+        return CfEntityRef.getAsDebugEntity(valTracker, ref.wrapped, maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -760,7 +737,7 @@ public class DebugManager implements IDebugManager {
         }
 
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
-        final DebugFrame frame = new DebugFrame(sourceFilePath, depth, valTracker, refTracker, pageContext);
+        final DebugFrame frame = new DebugFrame(sourceFilePath, depth, valTracker, pageContext);
 
         stack.add(frame);
 
@@ -808,15 +785,14 @@ public class DebugManager implements IDebugManager {
     }
 
     public String getSourcePathForVariablesRef(int variablesRef) {
-        var ref = refTracker.maybeGetFromId(variablesRef);
+        var ref = valTracker.maybeGetFromId(variablesRef);
         if (ref == null) {
             return null;
         }
         else {
-            // paranoid null handling should not be necessary here
             return ref.wrapped == null
                 ? null
-                : ref.wrapped.getSourcePath();
+                : CfEntityRef.getSourcePath(ref.wrapped);
         }
     }
 }

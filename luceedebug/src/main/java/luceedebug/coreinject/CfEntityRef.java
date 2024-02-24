@@ -5,88 +5,86 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 
-import lucee.runtime.type.scope.Scope;
 import lucee.runtime.Component;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 
 import luceedebug.*;
 
+// CfValue
 class CfEntityRef implements ICfEntityRef {
-    final String name;
-    final ValTracker.Wrapper_t cfEntity; // strong ref
+    private final ValTracker valTracker;
+    public final Object obj;
+    public final long id;
 
-    private long id; // set after we get an id from entity tracker
+    public CfEntityRef(ValTracker valTracker, Object obj) {
+        this.valTracker = valTracker;
+        this.obj = obj;
+        this.id = valTracker.idempotentRegisterObject(obj).id;
+    }
 
-    @SuppressWarnings("unused")
-    private RefTracker.Wrapper_t<CfEntityRef> self_wrapperKeepAlive; // set in local static factory method
-
-    // direct children of this object we want to keep refs to
-    private ArrayList<CfEntityRef> owned_keepAlive = new ArrayList<>();
-
-    private RefTracker<CfEntityRef> global_refTracker;
-    private ValTracker global_valTracker;
-
-    public long getId() {
+    public long getID() {
         return id;
-    }
-
-    private CfEntityRef(String name, ValTracker.Wrapper_t cfEntity, RefTracker<CfEntityRef> refTracker, ValTracker valTracker) {
-        this.name = name;
-        this.cfEntity = cfEntity;
-        this.global_refTracker = refTracker;
-        this.global_valTracker = valTracker;
-    }
-
-    static public CfEntityRef freshRef(ValTracker valTracker, RefTracker<CfEntityRef> refTracker, String name, Object obj) {
-        ValTracker.Wrapper_t underlyingEntity = valTracker.idempotentRegisterObject(obj);
-        CfEntityRef self = new CfEntityRef(name, underlyingEntity, refTracker, valTracker);
-        RefTracker.Wrapper_t<CfEntityRef> selfRef = refTracker.makeRef(self);
-
-        self.id = selfRef.id;
-        self.self_wrapperKeepAlive = selfRef;
-
-        return selfRef.wrapped;
     }
 
     /**
      * @maybeNull_which --> null means "any type"
      */
-    public IDebugEntity[] getAsDebugEntity(IDebugEntity.DebugEntityType maybeNull_which) {
-        // reset strong refs, they could change here; discard old refs, maybe we'll get new ones during the method
-        owned_keepAlive = new ArrayList<>();
-
+    public static IDebugEntity[] getAsDebugEntity(ValTracker valTracker, Object obj, IDebugEntity.DebugEntityType maybeNull_which) {
         final boolean namedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.NAMED;
         final boolean indexedOK = maybeNull_which == null || maybeNull_which == IDebugEntity.DebugEntityType.INDEXED;
 
-        if (cfEntity.wrapped instanceof Map && namedOK) {
+        if (obj instanceof Map && namedOK) {
+            /*
+                if (cfEntity.wrapped instanceof Component) {
+                    if (this.flags.contains(Flags.isScope) || this.flags.contains(Flags.isIterableThisRef)) {
+                        @SuppressWarnings("unchecked")
+                        var m = (Map<String, Object>)cfEntity.wrapped;
+                        return getAsMaplike(m);    
+                    }
+                    else {
+                        return new IDebugEntity[] {
+                            maybeNull_asValue("this", cfEntity.wrapped, true, true),
+                            maybeNull_asValue("variables", ((Component)cfEntity.wrapped).getComponentScope()),
+                            maybeNull_asValue("static", ((Component)cfEntity.wrapped).staticScope())
+                        };
+                    }
+                }
+            */
             @SuppressWarnings("unchecked")
-            var m = (Map<String, Object>)cfEntity.wrapped;
-            return getAsMaplike(m);
+            var m = (Map<String, Object>)obj;
+            return getAsMaplike(valTracker, m);
         }
-        else if (cfEntity.wrapped instanceof Array && indexedOK) {
-            return getAsCfArray();
+        else if (obj instanceof Array && indexedOK) {
+            return getAsCfArray(valTracker, (Array)obj);
         }
         else {
             return new IDebugEntity[0];
         }
     }
 
-    static private Comparator<IDebugEntity> xscopeByName = Comparator.comparing((IDebugEntity v) -> v.getName().toLowerCase());
+    private static Comparator<IDebugEntity> xscopeByName = Comparator.comparing((IDebugEntity v) -> v.getName().toLowerCase());
 
-    private IDebugEntity[] getAsMaplike(Map<String, Object> map) {
+    private static IDebugEntity[] getAsMaplike(ValTracker valTracker, Map<String, Object> map) {
         ArrayList<IDebugEntity> results = new ArrayList<>();
         
         Set<Map.Entry<String,Object>> entries = map.entrySet();
 
         // We had been showing member functions on component instances, but it's really just noise. Maybe this could be a configurable option.
-        final var skipFunctionLikes = true;
+        final var skipNoisyComponentFunctions = true;
         
         for (Map.Entry<String, Object> entry : entries) {
-            IDebugEntity val = maybeNull_asValue(entry.getKey(), entry.getValue(), skipFunctionLikes);
+            IDebugEntity val = maybeNull_asValue(valTracker, entry.getKey(), entry.getValue(), skipNoisyComponentFunctions);
             if (val != null) {
                 results.add(val);
             }
+        }
+
+        {
+            DebugEntity val = new DebugEntity();
+            val.name = "__scopeID";
+            val.value = "" + valTracker.idempotentRegisterObject(map).id;
+            results.add(val);
         }
 
         results.sort(xscopeByName);    
@@ -94,13 +92,12 @@ class CfEntityRef implements ICfEntityRef {
         return results.toArray(new IDebugEntity[results.size()]);
     }
 
-    private IDebugEntity[] getAsCfArray() {
-        Array array = (Array) cfEntity.wrapped;
+    private static IDebugEntity[] getAsCfArray(ValTracker valTracker, Array array) {
         ArrayList<IDebugEntity> result = new ArrayList<>();
 
         // cf 1-indexed
         for (int i = 1; i <= array.size(); ++i) {
-            IDebugEntity val = maybeNull_asValue(Integer.toString(i), array.get(i, null));
+            IDebugEntity val = maybeNull_asValue(valTracker, Integer.toString(i), array.get(i, null));
             if (val != null) {
                 result.add(val);
             }
@@ -109,113 +106,118 @@ class CfEntityRef implements ICfEntityRef {
         return result.toArray(new IDebugEntity[result.size()]);
     }
 
+    public IDebugEntity maybeNull_asValue(String name) {
+        return maybeNull_asValue(valTracker, name, obj, true);
+    }
+
     /**
      * returns null for "this should not be displayed as a debug entity", which sort of a kludgy way
      * to clean up cfc value info.
      * which is used to cut down on noise from CFC getters/setters/member-functions which aren't too useful for debugging.
      * Maybe such things should be optionally included as per some configuration.
      */
-    private IDebugEntity maybeNull_asValue(String name, Object cfEntity) {
-        return maybeNull_asValue(name, cfEntity, false);
+    private static IDebugEntity maybeNull_asValue(ValTracker valTracker, String name, Object obj) {
+        return maybeNull_asValue(valTracker, name, obj, true);
     }
 
-    public IDebugEntity maybeNull_asValue(String name) {
-        return maybeNull_asValue(name, cfEntity.wrapped);
-    }
-
-    private IDebugEntity maybeNull_asValue(String name, Object cfEntity, boolean skipFunctionLikes) {
+    /**
+     * @markDiscoveredComponentsAsIterableThisRef if true, a Component will be marked as if it were any normal Map<String, Object>. This drives discovery of variables;
+     * showing the "top level" of a component we want to show its "inner scopes" (this, variables, and static)
+     */
+    private static IDebugEntity maybeNull_asValue(ValTracker valTracker, String name, Object obj, boolean skipNoisyComponentFunctions) {
         DebugEntity val = new DebugEntity();
         val.name = name;
 
-        if (cfEntity == null) {
+        if (obj == null) {
             val.value = "<<java-null>>";
         }
-        else if (cfEntity instanceof String) {
-            val.value = "\"" + cfEntity + "\"";
+        else if (obj instanceof String) {
+            val.value = "\"" + obj + "\"";
         }
-        else if (cfEntity instanceof Number) {
-            val.value = cfEntity.toString();
+        else if (obj instanceof Number) {
+            val.value = obj.toString();
         }
-        else if (cfEntity instanceof Boolean) {
-            val.value = cfEntity.toString();
+        else if (obj instanceof Boolean) {
+            val.value = obj.toString();
         }
-        else if (cfEntity instanceof java.util.Date) {
-            val.value = cfEntity.toString();
+        else if (obj instanceof java.util.Date) {
+            val.value = obj.toString();
         }
-        else if (cfEntity instanceof Array) {
-            CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
-            owned_keepAlive.add(objRef);
-
-            int len = ((Array)objRef.cfEntity.wrapped).size();
+        else if (obj instanceof Array) {
+            int len = ((Array)obj).size();
             val.value = "Array (" + len + ")";
-            val.variablesReference = objRef.id;
+            val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
         }
         else if (
-            skipFunctionLikes &&
-            (cfEntity instanceof lucee.runtime.type.UDFGetterProperty
-            || cfEntity instanceof lucee.runtime.type.UDFSetterProperty
-            || cfEntity instanceof lucee.runtime.type.UDFImpl)) {
+            /*
+                // retain the lambbda/closure types
+                var lambda = () => {} // lucee.runtime.type.Lambda
+                var closure = function() {} // lucee.runtime.type.Closure
+                // discard component function types, they're mostly noise in debug output
+                component accessors=true {
+                    property name="foo"; // lucee.runtime.type.UDFGetterProperty / lucee.runtime.type.UDFSetterProperty
+                    // lucee.runtime.type.UDFImpl
+                    function foo() {}
+                }
+            */
+            skipNoisyComponentFunctions
+            && (obj instanceof lucee.runtime.type.UDFGetterProperty
+                || obj instanceof lucee.runtime.type.UDFSetterProperty
+                || obj instanceof lucee.runtime.type.UDFImpl)
+            && !(
+                obj instanceof lucee.runtime.type.Lambda
+                || obj instanceof lucee.runtime.type.Closure
+            )
+        ) {
             return null;
         }
-        else if (cfEntity instanceof lucee.runtime.type.QueryImpl) {
+        else if (obj instanceof lucee.runtime.type.QueryImpl) {
             try {
-                lucee.runtime.type.query.QueryArray queryAsArrayOfStructs = lucee.runtime.type.query.QueryArray.toQueryArray((lucee.runtime.type.QueryImpl)cfEntity);
-                CfEntityRef freshRef = CfEntityRef.freshRef(global_valTracker, global_refTracker, "Query", queryAsArrayOfStructs);
-                owned_keepAlive.add(freshRef);
+                lucee.runtime.type.query.QueryArray queryAsArrayOfStructs = lucee.runtime.type.query.QueryArray.toQueryArray((lucee.runtime.type.QueryImpl)obj);
                 val.value = "Query (" + queryAsArrayOfStructs.size() + " rows)";
-                val.variablesReference = freshRef.getId();
+                val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
             }
             catch (PageException e) {
                 //
                 // duplicative w/ catch-all else block
                 //
-                CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
-                owned_keepAlive.add(objRef);
-
                 try {
-                    val.value = cfEntity.getClass().toString();
+                    val.value = obj.getClass().toString();
+                    val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
                 }
                 catch (Throwable x) {
                     val.value = "<?> (no string representation available)";
+                    val.variablesReference = 0;
                 }
-
-                val.variablesReference = objRef.id;
             }
         }
-        // too broad, will match components and etc.
-        else if (cfEntity instanceof Map) {
-            CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
-            owned_keepAlive.add(objRef);
-
-            int len = ((Map<?,?>)objRef.cfEntity.wrapped).size();
-            if (cfEntity instanceof Component) {
-                val.value = "cfc<" + ((Component)cfEntity).getName() + ">";
+        else if (obj instanceof Map) {
+            if (obj instanceof Component) {
+                val.value = "cfc<" + ((Component)obj).getName() + ">";
             }
             else {
+                int len = ((Map<?,?>)obj).size();
                 val.value = "{} (" + len + " members)";
             }
-            val.variablesReference = objRef.id;
+            val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
         }
         else {
-            CfEntityRef objRef = freshRef(global_valTracker, global_refTracker, name, cfEntity);
-            owned_keepAlive.add(objRef);
-
             try {
-                val.value = cfEntity.getClass().toString();
+                val.value = obj.getClass().toString();
+                val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
             }
             catch (Throwable x) {
                 val.value = "<?> (no string representation available)";
+                val.variablesReference = 0;
             }
-
-            val.variablesReference = objRef.id;
         }
 
         return val;
     }
 
     public int getNamedVariablesCount() {
-        if (cfEntity.wrapped instanceof Map) {
-            return ((Map<?,?>)cfEntity.wrapped).size();
+        if (obj instanceof Map) {
+            return ((Map<?,?>)obj).size();
         }
         else {
             return 0;
@@ -223,13 +225,13 @@ class CfEntityRef implements ICfEntityRef {
     }
 
     public int getIndexedVariablesCount() {
-        if (cfEntity.wrapped instanceof lucee.runtime.type.scope.Argument) {
+        if (obj instanceof lucee.runtime.type.scope.Argument) {
             // `arguments` scope is both an Array and a Map, which represents the possiblity that a function is called with named args or positional args.
             // It seems like saner default behavior to report it only as having named variables, and zero indexed variables.
             return 0;
         }
-        else if (cfEntity.wrapped instanceof Array) {
-            return ((Array)cfEntity.wrapped).size();
+        else if (obj instanceof Array) {
+            return ((Array)obj).size();
         }
         else {
             return 0;
@@ -239,8 +241,7 @@ class CfEntityRef implements ICfEntityRef {
     /**
      * @return String, or null if there is no path for the underlying entity
      */
-    String getSourcePath() {
-        final var obj = cfEntity.wrapped;
+    public static String getSourcePath(Object obj) {
         if (obj instanceof Component) {
             return ((Component)obj).getPageSource().getPhyscalFile().getAbsolutePath();
         }
