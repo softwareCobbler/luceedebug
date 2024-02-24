@@ -17,6 +17,7 @@ import java.util.function.Supplier;
 import com.google.common.collect.MapMaker;
 
 import luceedebug.*;
+import luceedebug.coreinject.CfEntityRef.MarkerTrait;
 
 public class DebugFrame implements IDebugFrame {
     static private AtomicLong nextId = new AtomicLong(0);
@@ -27,7 +28,7 @@ public class DebugFrame implements IDebugFrame {
      */
     static private boolean closureScopeGloballyDisabled = false;
 
-    private ValTracker valTracker;
+    public final ValTracker valTracker;
 
     final private FrameContext frameContext_;
     final private String sourceFilePath;
@@ -57,6 +58,9 @@ public class DebugFrame implements IDebugFrame {
     // these should be made gc'able when this frame is collected
     // We might want to place these results somewhere that is kept alive for the whole request?
     private ArrayList<Object> refsToKeepAlive_ = new ArrayList<>();
+    void pin(Object obj) {
+        refsToKeepAlive_.add(obj);
+    }
 
     // hold strong refs to scopes, because PageContext will swap them out as frames change (variables, local, this)
     // (application, server and etc. maybe could be held as globals)
@@ -242,7 +246,9 @@ public class DebugFrame implements IDebugFrame {
 
     private void checkedPutScopeRef(String name, Map<?,?> scope) {
         if (scope != null && !(scope instanceof LocalNotSupportedScope)) {
-            scopes_.put(name, new CfEntityRef(valTracker, scope));
+            var v = new MarkerTrait.Scope(scope);
+            pin(v);
+            scopes_.put(name, new CfEntityRef(this, v));
         }
     }
 
@@ -315,7 +321,7 @@ public class DebugFrame implements IDebugFrame {
     }
 
     CfEntityRef trackEvalResult(Object obj) {
-        refsToKeepAlive_.add(obj);
-        return new CfEntityRef(valTracker, obj);
+        pin(obj);
+        return new CfEntityRef(this, obj);
     }
 }
