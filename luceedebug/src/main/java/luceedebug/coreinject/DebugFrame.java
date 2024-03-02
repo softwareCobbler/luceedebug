@@ -321,7 +321,8 @@ public class DebugFrame implements IDebugFrame {
     }
 
     CfValueDebuggerBridge trackEvalResult(Object obj) {
-        pin(obj);
-        return new CfValueDebuggerBridge(this, obj);
+        var v = new CfValueDebuggerBridge(this, obj);
+        CfValueDebuggerBridge.pin(obj);
+        return v;
     }
 }

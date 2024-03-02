@@ -781,6 +781,8 @@ public class DebugManager implements IDebugManager {
             // we popped the last frame, so we destroy the whole stack
             cfStackByThread.remove(currentThread);
             pageContextByThread.remove(currentThread);
+            
+            // TODO: cancel any current thread step requests here (e.g. a "step over" on last line of last frame in current request)
         }
     }
 

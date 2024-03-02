@@ -4,6 +4,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.graph.Graph;
 
 import lucee.runtime.Component;
 import lucee.runtime.exp.PageException;
@@ -12,6 +20,21 @@ import lucee.runtime.type.Array;
 import luceedebug.*;
 
 class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
+    // Pin some ephemeral evaluated things so they don't get GC'd immediately.
+    // It would be better to pin them to a "session" or something with a meaningful lifetime,
+    // rather than hope they live long enough in this cache to be useful.
+    // Most objects do not require being pinned here -- objects that require pinning are those we synthetically create
+    // while generating debug info, like when wrap a CFC in a MarkerTrait.Scope, or create an array out of a Query object.
+    // Most objects will be alive as long as they'd be alive in the cf engine and that's it.
+    private static final Cache<Integer, Object> pinnedObjects = CacheBuilder
+        .newBuilder()
+        .maximumSize(50)
+        .expireAfterWrite(10, TimeUnit.MINUTES)
+        .build();
+    static void pin(Object obj) {
+        pinnedObjects.put(System.identityHashCode(obj), obj);
+    }
+
     private final DebugFrame frame;
     public final Object obj;
     public final long id;
@@ -169,11 +192,11 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
                 // retain the lambbda/closure types
                 var lambda = () => {} // lucee.runtime.type.Lambda
                 var closure = function() {} // lucee.runtime.type.Closure
+                
                 // discard component function types, they're mostly noise in debug output
                 component accessors=true {
                     property name="foo"; // lucee.runtime.type.UDFGetterProperty / lucee.runtime.type.UDFSetterProperty
-                    // lucee.runtime.type.UDFImpl
-                    function foo() {}
+                    function foo() {} // lucee.runtime.type.UDFImpl
                 }
             */
             skipNoisyComponentFunctions
@@ -191,7 +214,10 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
             try {
                 lucee.runtime.type.query.QueryArray queryAsArrayOfStructs = lucee.runtime.type.query.QueryArray.toQueryArray((lucee.runtime.type.QueryImpl)obj);
                 val.value = "Query (" + queryAsArrayOfStructs.size() + " rows)";
-                val.variablesReference = valTracker.idempotentRegisterObject(obj).id;
+                
+                pin(queryAsArrayOfStructs);
+
+                val.variablesReference = valTracker.idempotentRegisterObject(queryAsArrayOfStructs).id;
             }
             catch (PageException e) {
                 //
