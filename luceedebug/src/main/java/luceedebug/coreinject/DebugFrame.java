@@ -3,26 +3,21 @@ package luceedebug.coreinject;
 import lucee.runtime.PageContext;
 import lucee.runtime.PageContextImpl;
 import lucee.runtime.type.scope.LocalNotSupportedScope;
-import lucee.runtime.type.scope.Scope;
 
 import lucee.runtime.type.Collection;
-import lucee.runtime.type.Collection.Key;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import com.google.common.collect.MapMaker;
 
 import luceedebug.*;
+import luceedebug.coreinject.CfValueDebuggerBridge.MarkerTrait;
 
 public class DebugFrame implements IDebugFrame {
     static private AtomicLong nextId = new AtomicLong(0);
@@ -33,8 +28,7 @@ public class DebugFrame implements IDebugFrame {
      */
     static private boolean closureScopeGloballyDisabled = false;
 
-    private ValTracker valTracker;
-    private RefTracker<CfEntityRef> refTracker;
+    public final ValTracker valTracker;
 
     final private FrameContext frameContext_;
     final private String sourceFilePath;
@@ -58,12 +52,15 @@ public class DebugFrame implements IDebugFrame {
 
     // lazy initialized on request for scopes
     // This is "scopes, wrapped with trackable IDs, which are expensive to create and cleanup"
-    private LinkedHashMap<String, CfEntityRef> scopes_ = null;
+    private LinkedHashMap<String, CfValueDebuggerBridge> scopes_ = null;
 
     // the results of evaluating complex expressions need to be kept alive for the entirety of the frame
     // these should be made gc'able when this frame is collected
     // We might want to place these results somewhere that is kept alive for the whole request?
-    private ArrayList<CfEntityRef> refsToKeepAlive_ = new ArrayList<>();
+    private ArrayList<Object> refsToKeepAlive_ = new ArrayList<>();
+    void pin(Object obj) {
+        refsToKeepAlive_.add(obj);
+    }
 
     // hold strong refs to scopes, because PageContext will swap them out as frames change (variables, local, this)
     // (application, server and etc. maybe could be held as globals)
@@ -219,15 +216,14 @@ public class DebugFrame implements IDebugFrame {
         }
     }
 
-    public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext) {
-        this(sourceFilePath, depth, valTracker, refTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
+    public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext) {
+        this(sourceFilePath, depth, valTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
     }
 
-    public DebugFrame(String sourceFilePath, int depth, ValTracker varTracker, RefTracker<CfEntityRef> refTracker, PageContext pageContext, String name) {
+    public DebugFrame(String sourceFilePath, int depth, ValTracker varTracker, PageContext pageContext, String name) {
         this.frameContext_ = new FrameContext(pageContext);
         this.sourceFilePath = sourceFilePath;
         this.valTracker = varTracker;
-        this.refTracker = refTracker;
         this.id = nextId.incrementAndGet();
         this.name = name;
         this.depth = depth;
@@ -250,7 +246,9 @@ public class DebugFrame implements IDebugFrame {
 
     private void checkedPutScopeRef(String name, Map<?,?> scope) {
         if (scope != null && !(scope instanceof LocalNotSupportedScope)) {
-            scopes_.put(name, CfEntityRef.freshRef(valTracker, refTracker, name, scope));
+            var v = new MarkerTrait.Scope(scope);
+            pin(v);
+            scopes_.put(name, new CfValueDebuggerBridge(this, v));
         }
     }
 
@@ -307,23 +305,24 @@ public class DebugFrame implements IDebugFrame {
         lazyInitScopeRefs();
         IDebugEntity[] result = new DebugEntity[scopes_.size()];
         int i = 0;
-        for (CfEntityRef entityRef : scopes_.values()) {
+        for (var kv : scopes_.entrySet()) {
+            var name = kv.getKey();
+            var entityRef = kv.getValue();
             var entity = new DebugEntity();
-            entity.name = entityRef.name;
+            entity.name = name;
             entity.namedVariables = entityRef.getNamedVariablesCount();
             entity.indexedVariables = entityRef.getIndexedVariablesCount();
             entity.expensive = true;
-            entity.variablesReference = entityRef.getId();
+            entity.variablesReference = entityRef.id;
             result[i] = entity;
             i += 1;
         }
         return result;
     }
 
-    CfEntityRef trackEvalResult(Object obj) {
-        // Strings, numbers, etc. should be skipped over?
-        final var ref = CfEntityRef.freshRef(valTracker, refTracker, "$eval", obj);
-        refsToKeepAlive_.add(ref);
-        return ref;
+    CfValueDebuggerBridge trackEvalResult(Object obj) {
+        var v = new CfValueDebuggerBridge(this, obj);
+        CfValueDebuggerBridge.pin(obj);
+        return v;
     }
 }

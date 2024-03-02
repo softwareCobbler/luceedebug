@@ -87,6 +87,12 @@ public class LuceeTransformer implements ClassFileTransformer {
         else if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
             return instrumentClosureScope(classfileBuffer);
         }
+        else if (className.equals("lucee/runtime/ComponentImpl")) {
+            if (loader == null) {
+                throw new RuntimeException("instrumention ComponentImpl but core loader not seen yet");
+            }
+            return instrumentComponentImpl(classfileBuffer, loader);
+        }
         else if (className.equals("lucee/runtime/PageContextImpl")) {
             GlobalIDebugManagerHolder.luceeCoreLoader = loader;
 
@@ -187,6 +193,31 @@ public class LuceeTransformer implements ClassFileTransformer {
 
         try {
             var instrumenter = new luceedebug.instrumenter.ClosureScope(Opcodes.ASM9, classWriter);
+            var classReader = new ClassReader(classfileBuffer);
+
+            classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);
+
+            return classWriter.toByteArray();
+        }
+        catch (Throwable e) {
+            System.err.println("[luceedebug] exception during attempted classfile rewrite");
+            System.err.println(e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+            return null;
+        }
+    }
+
+    private byte[] instrumentComponentImpl(final byte[] classfileBuffer, ClassLoader loader) {
+        var classWriter = new ClassWriter(/*ClassWriter.COMPUTE_FRAMES |*/ ClassWriter.COMPUTE_MAXS) {
+            @Override
+            protected ClassLoader getClassLoader() {
+                return loader;
+            }
+        };
+
+        try {
+            var instrumenter = new luceedebug.instrumenter.ComponentImpl(Opcodes.ASM9, classWriter);
             var classReader = new ClassReader(classfileBuffer);
 
             classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);

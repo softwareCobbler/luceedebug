@@ -1053,7 +1053,7 @@ public class LuceeVm implements ILuceeVm {
         return GlobalIDebugManagerHolder.debugManager.getSourcePathForVariablesRef(variablesRef);
     }
 
-    public Either<String, Either<ICfEntityRef, String>> evaluate(int frameID, String expr) {
+    public Either<String, Either<ICfValueDebuggerBridge, String>> evaluate(int frameID, String expr) {
         return GlobalIDebugManagerHolder.debugManager.evaluate((Long)(long)frameID, expr);
     }
 }
