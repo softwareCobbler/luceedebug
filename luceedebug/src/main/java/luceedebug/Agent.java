@@ -142,8 +142,7 @@ public class Agent {
 
         System.setProperty("lucee.requesttimeout", "false");
         //
-        // This used to be (and still is ...) accomplished by luceedebug/instrumenter/Felix.java
-        // where we instrument the Felix constructor (that we expect Lucee to be using) and stitch these values in.
+        // This used to be accomplished by instrumenting the Felix constructor (that we expect Lucee to be using).
         // Lucee later added the ability to specify these as envvars or system properties, see:
         //  - https://luceeserver.atlassian.net/browse/LDEV-4193
         //  - https://github.com/lucee/Lucee/commit/ba63a11188f20fac04c6a69529c7cfc55023189e

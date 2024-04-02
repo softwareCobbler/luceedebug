@@ -81,10 +81,7 @@ public class LuceeTransformer implements ClassFileTransformer {
         var classReader = new ClassReader(classfileBuffer);
         String superClass = classReader.getSuperName();
 
-        if (className.equals("org/apache/felix/framework/Felix")) {
-            return instrumentFelix(classfileBuffer, loader);
-        }
-        else if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
+        if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
             return instrumentClosureScope(classfileBuffer);
         }
         else if (className.equals("lucee/runtime/ComponentImpl")) {
@@ -138,31 +135,6 @@ public class LuceeTransformer implements ClassFileTransformer {
         }
         else {
             return classfileBuffer;
-        }
-    }
-
-    private byte[] instrumentFelix(final byte[] classfileBuffer, ClassLoader loader) {
-        var classWriter = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS) {
-            @Override
-            protected ClassLoader getClassLoader() {
-                return loader;
-            }
-        };
-
-        try {
-            var instrumenter = new luceedebug.instrumenter.Felix(Opcodes.ASM9, classWriter);
-            var classReader = new ClassReader(classfileBuffer);
-
-            classReader.accept(instrumenter, ClassReader.EXPAND_FRAMES);
-
-            return classWriter.toByteArray();
-        }
-        catch (Throwable e) {
-            System.err.println("[luceedebug] exception during attempted classfile rewrite");
-            System.err.println(e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
-            return null;
         }
     }
 
