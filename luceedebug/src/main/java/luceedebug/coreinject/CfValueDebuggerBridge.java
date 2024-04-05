@@ -1,23 +1,21 @@
 package luceedebug.coreinject;
 
+import java.rmi.server.RemoteObject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.graph.Graph;
 
 import lucee.runtime.Component;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
-
-import luceedebug.*;
+import luceedebug.ICfValueDebuggerBridge;
+import luceedebug.IDebugEntity;
 
 class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // Pin some ephemeral evaluated things so they don't get GC'd immediately.
@@ -40,8 +38,8 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     public final long id;
 
     public CfValueDebuggerBridge(DebugFrame frame, Object obj) {
-        this.frame = frame;
-        this.obj = obj;
+        this.frame = Objects.requireNonNull(frame);
+        this.obj = Objects.requireNonNull(obj);
         this.id = frame.valTracker.idempotentRegisterObject(obj).id;
     }
 

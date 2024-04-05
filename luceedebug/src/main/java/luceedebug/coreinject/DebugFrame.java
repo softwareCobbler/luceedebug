@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -220,10 +221,10 @@ public class DebugFrame implements IDebugFrame {
         this(sourceFilePath, depth, valTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
     }
 
-    public DebugFrame(String sourceFilePath, int depth, ValTracker varTracker, PageContext pageContext, String name) {
+    public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, String name) {
         this.frameContext_ = new FrameContext(pageContext);
-        this.sourceFilePath = sourceFilePath;
-        this.valTracker = varTracker;
+        this.sourceFilePath = Objects.requireNonNull(sourceFilePath);
+        this.valTracker = Objects.requireNonNull(valTracker);
         this.id = nextId.incrementAndGet();
         this.name = name;
         this.depth = depth;
@@ -306,8 +307,8 @@ public class DebugFrame implements IDebugFrame {
         IDebugEntity[] result = new DebugEntity[scopes_.size()];
         int i = 0;
         for (var kv : scopes_.entrySet()) {
-            var name = kv.getKey();
-            var entityRef = kv.getValue();
+            String name = kv.getKey();
+            CfValueDebuggerBridge entityRef = kv.getValue();
             var entity = new DebugEntity();
             entity.name = name;
             entity.namedVariables = entityRef.getNamedVariablesCount();
