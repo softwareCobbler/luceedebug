@@ -32,6 +32,7 @@ import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
 import luceedebug.IDebugFrame;
 import luceedebug.IDebugManager;
+import luceedebug.coreinject.ValTracker.TaggedObject;
 
 public class DebugManager implements IDebugManager {
 
@@ -160,14 +161,12 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized private Either<Object, String> findEntity(int variableID) {
-        final var ref = valTracker.maybeGetFromId(variableID);
+        final TaggedObject ref = valTracker.maybeGetFromId(variableID);
         if (ref == null) {
             return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
         }
 
-        final var entity = ref.wrapped.get();
-
-        return Either.Left(entity);
+        return Either.Left(ref.obj);
     }
     
     /**
@@ -518,11 +517,11 @@ public class DebugManager implements IDebugManager {
      * @maybeNull_which --> null means "any type"
      */
     synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
-        var ref = valTracker.maybeGetFromId(id);
+        TaggedObject ref = valTracker.maybeGetFromId(id);
         if (ref == null) {
             return new IDebugEntity[0];
         }
-        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.wrapped.get(), maybeNull_which);
+        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.obj, maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -784,15 +783,14 @@ public class DebugManager implements IDebugManager {
     }
 
     public String getSourcePathForVariablesRef(int variablesRef) {
-        var ref = valTracker.maybeGetFromId(variablesRef);
+        TaggedObject ref = valTracker.maybeGetFromId(variablesRef);
         if (ref == null) {
             return null;
         }
         else {
-            var obj = ref.wrapped.get();
-            return obj == null
+            return ref.obj == null
                 ? null
-                : CfValueDebuggerBridge.getSourcePath(obj);
+                : CfValueDebuggerBridge.getSourcePath(ref.obj);
         }
     }
 }

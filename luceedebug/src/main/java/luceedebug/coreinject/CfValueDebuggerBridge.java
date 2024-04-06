@@ -22,8 +22,7 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // It would be better to pin them to a "session" or something with a meaningful lifetime,
     // rather than hope they live long enough in this cache to be useful.
     // Most objects do not require being pinned here -- objects that require pinning are those we synthetically create
-    // while generating debug info, like when wrap a CFC in a MarkerTrait.Scope, or create an array out of a Query object.
-    // Most objects will be alive as long as they'd be alive in the cf engine and that's it.
+    // while generating debug info, like when we wrap a CFC in a MarkerTrait.Scope, or create an array out of a Query object.
     private static final Cache<Integer, Object> pinnedObjects = CacheBuilder
         .newBuilder()
         .maximumSize(50)
