@@ -182,17 +182,12 @@ public class LuceeVm implements ILuceeVm {
         }
 
         private static void jdwp_stays_suspended_in_this_method_as_a_worker() {
-            @SuppressWarnings("unused")
-            int x = 0; // set bp here (bytecode index 0), then we'll do jdwp work on the thread this paused on
-            x++;
+            // bp will be set on single return bytecode
+            return;
         }
 
         static void spawnThreadForJdwpToSuspend() {
-            new Thread(new Runnable() {
-                public void run() {
-                    JdwpWorker.jdwp_stays_suspended_in_this_method_as_a_worker();
-                }
-            }).start();
+            new Thread(JdwpWorker::jdwp_stays_suspended_in_this_method_as_a_worker, "luceedebug-worker").start();
         }
 
         static ConcurrentHashMap<Long, Thread> threadBuffer_ = new ConcurrentHashMap<>();
