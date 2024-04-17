@@ -1,131 +1,138 @@
 package luceedebug.coreinject;
 
-import java.lang.ref.WeakReference;
-import java.util.WeakHashMap;
 import java.lang.ref.Cleaner;
-import java.lang.ref.Cleaner.Cleanable;
+import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
-import java.util.HashMap;
-import java.util.HashSet;
-
-import com.google.common.collect.MapMaker;
-import java.util.concurrent.ConcurrentMap;
-
-/**
- * weak auto cleaning multimap
- */
 public class ValTracker {
-    private Cleaner cleaner;
-    private Mapping mapping = new Mapping();
-    private HashSet<CleanerRunner> reachableCleaners = new HashSet<>(); // necessary? does the cleaner hold refs to these for us?
+    private final Cleaner cleaner;
 
-    public ValTracker(Cleaner cleaner) {
-        this.cleaner = cleaner;
-    }
+    /**
+     * Really we want a ConcurrentWeakHashMap - we could use Guava mapMaker with weakKeys.
+     * Instead we opt to use a sync'd map, because we expect that the number of threads
+     * touching the map can be more than 1, but will typically be exactly 1 (the DAP session issuing 'show variables' requests)
+     */
+    private final Map<Object, WeakTaggedObject> wrapperByObj = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<Long, WeakTaggedObject> wrapperByID = new ConcurrentHashMap<>();
 
-    //
-    // holding a strong ref to a Wrapper_t keeps the target object alive
-    //
-    public static class Wrapper_t {
-        private static long nextId = 0;
+    private static class WeakTaggedObject {
+        private static final AtomicLong nextId = new AtomicLong();
         public final long id;
-        // strong, but we maintain only a weak reference to Wrapper_t
-        // `wrapped` may contain a strong reference to `Wrapper_t`
-        // if O is only reachable through WeakReferences, O is unreachable, right?
-        // once weakrefs to O are cleared, O is "phantom reachable" ?
-        public final Object wrapped;
-        public Wrapper_t(Object wrapped) {
-            this.id = nextId++;
-            this.wrapped = wrapped;
-        }
-    }
-
-    private class Mapping {
-        // todo: we could probably replace a lot of the valtracker/reftracker with these concurrent maps with weak keys?
-        final private ConcurrentMap<Object, WeakReference<Wrapper_t>> vByObj = new MapMaker()
-            .concurrencyLevel(/* default as per docs */ 4)
-            .weakKeys()
-            .makeMap();
-        final private HashMap<Long, WeakReference<Wrapper_t>> vById = new HashMap<>();
-
-        public void dropById(long id) {
-            WeakReference<Wrapper_t> weakWrapped = vById.get(id);
-            if (weakWrapped != null) {
-                Wrapper_t wrapper = weakWrapped.get();
-                if (wrapper != null) {
-                    vByObj.remove(wrapper.wrapped);
-                }
-            }
-            vById.remove(id);
+        public final WeakReference<Object> wrapped;
+        public WeakTaggedObject(Object obj) {
+            this.id = nextId.getAndIncrement();
+            this.wrapped = new WeakReference<>(Objects.requireNonNull(obj));
         }
 
-        public Wrapper_t idempotentRegisterObject(Object wrapped) {
-            WeakReference<Wrapper_t> weakWrapped = vByObj.get(wrapped);
-            if (weakWrapped != null) {
-                Wrapper_t wrapper = weakWrapped.get();
-                if (wrapper != null) {
-                    return wrapper;
-                }
-            }
-
-            final Wrapper_t wrapper = new Wrapper_t(wrapped);
-            
-            new CleanerRunner(wrapper);
-
-            vByObj.put(wrapped, new WeakReference<>(wrapper));
-            vById.put(wrapper.id, new WeakReference<>(wrapper));
-
-            return wrapper;
-        }
-
-        /**
-         * If the id doesn't map to a WeakRef<Thread>, return null
-         * If the id maps to a WeakRef<Thread>, but it has been collected, return null
-         * Otherwise, return a strong reference to the underlying WeakRef
-         */
-        public Wrapper_t getFromId(long id) {
-            final WeakReference<Wrapper_t> weakWrapped = vById.get(id);
-            if (weakWrapped == null) {
+        public TaggedObject toStrong() {
+            var obj = wrapped.get();
+            if (obj == null) {
                 return null;
             }
-            // possibly null, that is expected
-            return weakWrapped.get();
+            return new TaggedObject(this.id, obj);
+        }
+    }
+
+    public static class TaggedObject {
+        public final long id;
+        
+        /**
+         * nonNull
+         */
+        public final Object obj;
+
+        private TaggedObject(long id, Object obj) {
+            this.id = id;
+            this.obj = Objects.requireNonNull(obj);
         }
     }
 
     private class CleanerRunner implements Runnable {
         private final long id;
         
-        @SuppressWarnings("unused") // want a strong ref to it ... right? we don't ever read it though
-        private final Cleanable cleanable;
-
-        public CleanerRunner(Wrapper_t obj) {
-            this.id = obj.id;
-            this.cleanable = cleaner.register(obj, this);
-            reachableCleaners.add(this); // side-effecting constructor
+        CleanerRunner(long id) {
+            this.id = id;
         }
 
+        @Override
         public void run() {
-            // remove the mapping from (id -> Object)
-            // the other mapping, WeakMap<TBase, Object> should have been cleared as per the behavior of WeakMap
-            mapping.dropById(id);
-            // remove ourself from cleaners
-            reachableCleaners.remove(this);
-            //System.out.println("-------- //////// someWeakishMap3 ran a cleaner which is promising");
+            // Remove the mapping from (id -> Object)
+            // The other mapping, Map</*weak key*/Object, TaggedObject> should have been cleared as per the behavior of the weak-key'd map
+            // It would be nice to assert that wrapperByObj().size() == wrapperByID.size() after we're done here, but the entries for wrapperByObj
+            // are cleaned non-deterministically (in the google guava case, the java sync'd WeakHashMap seems much more deterministic but maybe
+            // not guaranteed to be so), so there's no guarantee that the sizes sync up.
+            
+            wrapperByID.remove(id);
+
+            // __debug_updatedTracker("remove", id);
         }
     }
 
-    /**
-     * returns T | null
-     */
-    public Wrapper_t maybeGetFromId(long id) {
-        return mapping.getFromId(id);
+    public ValTracker(Cleaner cleaner) {
+        this.cleaner = cleaner;
     }
 
     /**
-     * This should always succeed, and return a valid id
+     * This should always succeed, and return an existing or freshly generated TaggedObject.
+     * @return TaggedObject
      */
-    public Wrapper_t idempotentRegisterObject(Object wrapped) {
-        return mapping.idempotentRegisterObject(wrapped);
+    public TaggedObject idempotentRegisterObject(Object obj) {
+        Objects.requireNonNull(obj);
+
+        {
+            final WeakTaggedObject weakTaggedObj = wrapperByObj.get(obj);
+            if (weakTaggedObj != null) {
+                TaggedObject strong = weakTaggedObj.toStrong();
+                if (strong != null) {
+                    return strong;
+                }
+            }
+        }
+
+        final WeakTaggedObject fresh = new WeakTaggedObject(obj);
+
+        registerCleaner(obj, fresh.id);
+        
+        wrapperByObj.put(obj, fresh);
+        wrapperByID.put(fresh.id, fresh);
+
+        // __debug_updatedTracker("add", fresh.id);
+
+        return fresh.toStrong();
+    }
+
+    private void registerCleaner(Object obj, long id) {
+        cleaner.register(obj, new CleanerRunner(id));
+    }
+
+    /**
+     * @return TaggedObject?
+     */
+    public TaggedObject maybeGetFromId(long id) {
+        final WeakTaggedObject weakTaggedObj = wrapperByID.get(id);
+        if (weakTaggedObj == null) {
+            return null;
+        }
+
+        return weakTaggedObj.toStrong();
+    }
+
+    /**
+     * debug/sanity check that tracked values are being cleaned up in both maps in response to gc events
+     */
+    @SuppressWarnings("unused")
+    private void __debug_updatedTracker(String what, long id) {
+        synchronized (wrapperByObj) {
+            System.out.println(what + " id=" + id + " wrapperByObjSize=" + wrapperByObj.entrySet().size() + ", wrapperByIDSize=" + wrapperByID.entrySet().size());
+            for (var e : wrapperByObj.entrySet()) {
+                // size might be reported as N but if all keys have been GC'd then we won't iterate at all
+                System.out.println(" entry (K null)=" + (e.getKey() == null ? "y" : "n") + " (V.id)=" + e.getValue().id + " (v.obj null)=" + (e.getValue().wrapped.get() == null ? "y" : "n"));
+            }
+        }
     }
 }

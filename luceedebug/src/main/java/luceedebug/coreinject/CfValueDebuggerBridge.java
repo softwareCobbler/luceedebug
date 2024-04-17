@@ -1,31 +1,28 @@
 package luceedebug.coreinject;
 
+import java.rmi.server.RemoteObject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.graph.Graph;
 
 import lucee.runtime.Component;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
-
-import luceedebug.*;
+import luceedebug.ICfValueDebuggerBridge;
+import luceedebug.IDebugEntity;
 
 class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // Pin some ephemeral evaluated things so they don't get GC'd immediately.
     // It would be better to pin them to a "session" or something with a meaningful lifetime,
     // rather than hope they live long enough in this cache to be useful.
     // Most objects do not require being pinned here -- objects that require pinning are those we synthetically create
-    // while generating debug info, like when wrap a CFC in a MarkerTrait.Scope, or create an array out of a Query object.
-    // Most objects will be alive as long as they'd be alive in the cf engine and that's it.
+    // while generating debug info, like when we wrap a CFC in a MarkerTrait.Scope, or create an array out of a Query object.
     private static final Cache<Integer, Object> pinnedObjects = CacheBuilder
         .newBuilder()
         .maximumSize(50)
@@ -40,8 +37,8 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     public final long id;
 
     public CfValueDebuggerBridge(DebugFrame frame, Object obj) {
-        this.frame = frame;
-        this.obj = obj;
+        this.frame = Objects.requireNonNull(frame);
+        this.obj = Objects.requireNonNull(obj);
         this.id = frame.valTracker.idempotentRegisterObject(obj).id;
     }
 

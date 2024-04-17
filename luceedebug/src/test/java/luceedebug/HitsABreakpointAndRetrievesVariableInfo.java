@@ -1,8 +1,5 @@
 package luceedebug;
 
-import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -11,6 +8,13 @@ import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
+import org.eclipse.lsp4j.debug.Scope;
+import org.eclipse.lsp4j.debug.Variable;
+import org.eclipse.lsp4j.debug.launch.DSPLauncher;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.Test;
+
 import com.github.dockerjava.api.DockerClient;
 import com.google.api.client.http.GenericUrl;
 import com.google.api.client.http.HttpRequest;
@@ -18,11 +22,8 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 
 import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
-import luceedebug.testutils.LuceeUtils;
 import luceedebug.testutils.DockerUtils.HostPortBindings;
-
-import org.eclipse.lsp4j.debug.*;
-import org.eclipse.lsp4j.debug.launch.DSPLauncher;
+import luceedebug.testutils.LuceeUtils;
 
 class HitsABreakpointAndRetrievesVariableInfo {
     @Test

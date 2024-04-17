@@ -1,32 +1,38 @@
 package luceedebug.coreinject;
 
-import com.google.common.collect.MapMaker;
-import com.sun.jdi.Bootstrap;
-import com.sun.jdi.connect.AttachingConnector;
-import com.sun.jdi.VirtualMachine;
-import com.sun.jdi.VirtualMachineManager;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.lang.ref.Cleaner;
 import java.lang.ref.WeakReference;
-import lucee.runtime.PageContext;
-import lucee.runtime.exp.PageException;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import javax.servlet.ServletException;
 
-import static lucee.loader.engine.CFMLEngine.DIALECT_CFML;
+import com.google.common.collect.MapMaker;
+import com.sun.jdi.Bootstrap;
+import com.sun.jdi.VirtualMachine;
+import com.sun.jdi.VirtualMachineManager;
+import com.sun.jdi.connect.AttachingConnector;
 
-import luceedebug.*;
+import static lucee.loader.engine.CFMLEngine.DIALECT_CFML;
+import lucee.runtime.PageContext;
+import lucee.runtime.exp.PageException;
+import luceedebug.Config;
+import luceedebug.DapServer;
+import luceedebug.Either;
+import luceedebug.GlobalIDebugManagerHolder;
+import luceedebug.ICfValueDebuggerBridge;
+import luceedebug.IDebugEntity;
+import luceedebug.IDebugFrame;
+import luceedebug.IDebugManager;
+import luceedebug.coreinject.ValTracker.TaggedObject;
 
 public class DebugManager implements IDebugManager {
 
@@ -154,23 +160,13 @@ public class DebugManager implements IDebugManager {
         return doDumpAsJSON(pageContext, entity.left);
     }
 
-    // we need to clarify and tighten the difference between a ref and a variable (or unify the concepts).
-    // We want "variable" here right? But variableID is pointing a ref, which wraps a variable.
-    // This sort of makes sense if we consider refs to always be complex and variables complex-or-primitives,
-    // presumably all complex values have a ref + a variable? One too many layers of indirection?
     synchronized private Either<Object, String> findEntity(int variableID) {
-        final var ref = valTracker.maybeGetFromId(variableID);
+        final TaggedObject ref = valTracker.maybeGetFromId(variableID);
         if (ref == null) {
             return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
         }
 
-        // paranoid null handling here, the target entity at the leaf could legitimately be null though,
-        // as in some actual null value like `{someValue: null}`
-        final var entity = ref.wrapped == null
-            ? null // shouldn't happen
-            : ref.wrapped;
-
-        return Either.Left(entity);
+        return Either.Left(ref.obj);
     }
     
     /**
@@ -521,11 +517,11 @@ public class DebugManager implements IDebugManager {
      * @maybeNull_which --> null means "any type"
      */
     synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
-        var ref = valTracker.maybeGetFromId(id);
+        TaggedObject ref = valTracker.maybeGetFromId(id);
         if (ref == null) {
             return new IDebugEntity[0];
         }
-        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.wrapped, maybeNull_which);
+        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.obj, maybeNull_which);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -787,14 +783,14 @@ public class DebugManager implements IDebugManager {
     }
 
     public String getSourcePathForVariablesRef(int variablesRef) {
-        var ref = valTracker.maybeGetFromId(variablesRef);
+        TaggedObject ref = valTracker.maybeGetFromId(variablesRef);
         if (ref == null) {
             return null;
         }
         else {
-            return ref.wrapped == null
+            return ref.obj == null
                 ? null
-                : CfValueDebuggerBridge.getSourcePath(ref.wrapped);
+                : CfValueDebuggerBridge.getSourcePath(ref.obj);
         }
     }
 }
