@@ -5,6 +5,7 @@ import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,12 +30,12 @@ public class ValTracker {
             this.wrapped = new WeakReference<>(Objects.requireNonNull(obj));
         }
 
-        public TaggedObject toStrong() {
+        public Optional<TaggedObject> maybeToStrong() {
             var obj = wrapped.get();
             if (obj == null) {
-                return null;
+                return Optional.empty();
             }
-            return new TaggedObject(this.id, obj);
+            return Optional.of(new TaggedObject(this.id, obj));
         }
     }
 
@@ -87,9 +88,9 @@ public class ValTracker {
         {
             final WeakTaggedObject weakTaggedObj = wrapperByObj.get(obj);
             if (weakTaggedObj != null) {
-                TaggedObject strong = weakTaggedObj.toStrong();
-                if (strong != null) {
-                    return strong;
+                Optional<TaggedObject> maybeStrong = weakTaggedObj.maybeToStrong();
+                if (maybeStrong.isPresent()) {
+                    return maybeStrong.get();
                 }
             }
         }
@@ -103,23 +104,21 @@ public class ValTracker {
 
         // __debug_updatedTracker("add", fresh.id);
 
-        return fresh.toStrong();
+        // expected to always succeed here
+        return fresh.maybeToStrong().get();
     }
 
     private void registerCleaner(Object obj, long id) {
         cleaner.register(obj, new CleanerRunner(id));
     }
 
-    /**
-     * @return TaggedObject?
-     */
-    public TaggedObject maybeGetFromId(long id) {
+    public Optional<TaggedObject> maybeGetFromId(long id) {
         final WeakTaggedObject weakTaggedObj = wrapperByID.get(id);
         if (weakTaggedObj == null) {
-            return null;
+            return Optional.empty();
         }
 
-        return weakTaggedObj.toStrong();
+        return weakTaggedObj.maybeToStrong();
     }
 
     /**

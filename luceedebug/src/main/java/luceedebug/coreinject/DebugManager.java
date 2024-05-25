@@ -7,10 +7,12 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import javax.servlet.ServletException;
@@ -161,12 +163,12 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized private Either<Object, String> findEntity(int variableID) {
-        final TaggedObject ref = valTracker.maybeGetFromId(variableID);
-        if (ref == null) {
-            return Either.Right("Lookup of ref having ID " + variableID + " found nothing.");
-        }
-
-        return Either.Left(ref.obj);
+        return Either
+            .fromOpt(valTracker.maybeGetFromId(variableID))
+            .bimap(
+                taggedObj -> taggedObj.obj,
+                v -> "Lookup of ref having ID " + variableID + " found nothing."
+            );
     }
     
     /**
@@ -517,11 +519,10 @@ public class DebugManager implements IDebugManager {
      * @maybeNull_which --> null means "any type"
      */
     synchronized public IDebugEntity[] getVariables(long id, IDebugEntity.DebugEntityType maybeNull_which) {
-        TaggedObject ref = valTracker.maybeGetFromId(id);
-        if (ref == null) {
-            return new IDebugEntity[0];
-        }
-        return CfValueDebuggerBridge.getAsDebugEntity(valTracker, ref.obj, maybeNull_which);
+        return valTracker
+            .maybeGetFromId(id)
+            .map(taggedObj -> CfValueDebuggerBridge.getAsDebugEntity(valTracker, taggedObj.obj, maybeNull_which))
+            .orElseGet(() -> new IDebugEntity[0]);
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
@@ -783,14 +784,9 @@ public class DebugManager implements IDebugManager {
     }
 
     public String getSourcePathForVariablesRef(int variablesRef) {
-        TaggedObject ref = valTracker.maybeGetFromId(variablesRef);
-        if (ref == null) {
-            return null;
-        }
-        else {
-            return ref.obj == null
-                ? null
-                : CfValueDebuggerBridge.getSourcePath(ref.obj);
-        }
+        return valTracker
+            .maybeGetFromId(variablesRef)
+            .map(taggedObj -> CfValueDebuggerBridge.getSourcePath(taggedObj.obj))
+            .orElseGet(() -> null);
     }
 }
