@@ -56,7 +56,8 @@ dependencies {
     compileOnly(files("extern/5.3.9.158-SNAPSHOT.lco"))
 
     // https://mvnrepository.com/artifact/org.eclipse.lsp4j/org.eclipse.lsp4j.debug
-    implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.15.0")
+    implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.23.1")
+
 }
 
 java {

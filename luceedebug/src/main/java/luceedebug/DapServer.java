@@ -25,8 +25,7 @@ import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
 import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
 import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 import org.eclipse.lsp4j.jsonrpc.services.JsonRequest;
-import org.eclipse.xtext.xbase.lib.Pure;
-import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
+import org.eclipse.lsp4j.jsonrpc.util.ToStringBuilder;
 
 import com.sun.jdi.ObjectCollectedException;
 
@@ -475,7 +474,6 @@ public class DapServer implements IDebugProtocolServer {
         }
         
         @Override
-        @Pure
         public String toString() {
           ToStringBuilder b = new ToStringBuilder(this);
           b.add("variablesReference", this.variablesReference);
@@ -483,7 +481,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public boolean equals(final Object obj) {
             if (this == obj) {
                 return true;
@@ -512,7 +509,6 @@ public class DapServer implements IDebugProtocolServer {
         }
         
         @Override
-        @Pure
         public String toString() {
           ToStringBuilder b = new ToStringBuilder(this);
           b.add("content", this.content);
@@ -520,7 +516,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public boolean equals(final Object obj) {
             if (this == obj) {
                 return true;
@@ -582,7 +577,6 @@ public class DapServer implements IDebugProtocolServer {
         }
         
         @Override
-        @Pure
         public String toString() {
             ToStringBuilder b = new ToStringBuilder(this);
             b.add("canonicalFilenames", this.canonicalFilenames);
@@ -592,7 +586,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public boolean equals(final Object obj) {
             if (this == obj) {
                 return true;
@@ -667,7 +660,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public String toString() {
             ToStringBuilder b = new ToStringBuilder(this);
             b.add("variablesReference", this.variablesReference);
@@ -675,7 +667,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public boolean equals(final Object obj) {
             if (this == obj) {
                 return true;
@@ -708,7 +699,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public String toString() {
             ToStringBuilder b = new ToStringBuilder(this);
             b.add("path", this.path);
@@ -716,7 +706,6 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         @Override
-        @Pure
         public boolean equals(final Object obj) {
             if (this == obj) {
                 return true;
