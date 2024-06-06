@@ -183,6 +183,17 @@ public class DapServer implements IDebugProtocolServer {
         return CompletableFuture.completedFuture(c);
     }
 
+    /**
+     * https://github.com/softwareCobbler/luceedebug/issues/50
+     */
+    @Override
+    public CompletableFuture<SourceResponse> source(SourceArguments args) {
+        final var exceptionalResult = new CompletableFuture<SourceResponse>();
+        final var error = new ResponseError(ResponseErrorCode.MethodNotFound, "'source' requests are not supported", null);
+        exceptionalResult.completeExceptionally(new ResponseErrorException(error));
+        return exceptionalResult;
+    }
+
     private IPathTransform mungeOnePathTransform(Map<?,?> map) {
         var maybeIdePrefix = map.get("idePrefix");
 
