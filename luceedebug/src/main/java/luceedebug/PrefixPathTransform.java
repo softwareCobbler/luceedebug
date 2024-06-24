@@ -12,23 +12,23 @@ class PrefixPathTransform implements IPathTransform {
     }
 
     public Optional<String> serverToIde(String s) {
-        if (s.startsWith(serverPrefix_)) {
-            return Optional.of(s.replace(serverPrefix_, idePrefix_));
-        }
-        else {
-            return Optional.empty();
-        }
+        return replacePrefix(s, serverPrefix_, idePrefix_);
     }
     public Optional<String> ideToServer(String s) {
-        if (s.startsWith(idePrefix_)) {
-            return Optional.of(s.replace(idePrefix_, serverPrefix_));
-        }
-        else {
-            return Optional.empty();
-        }
+        return replacePrefix(s, idePrefix_, serverPrefix_);
     }
 
     public String asTraceString() {
         return "PrefixPathTransform{idePrefix='" + idePrefix_ + "', serverPrefix='" + serverPrefix_ + "'}";
     }
+
+    private static Optional<String> replacePrefix(String s, String prefixToReplace, String newPrefix) {
+        // first we check that the string starts with the prefixToReplace in a case insensitive way
+        if (s.toLowerCase().startsWith(prefixToReplace.toLowerCase())) {
+            String path = newPrefix + s.substring(prefixToReplace.length());
+            return Optional.of(path);
+        }
+        return Optional.empty();
+    }
+
 }
