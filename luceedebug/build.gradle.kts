@@ -65,6 +65,11 @@ java {
     }
 }
 
+tasks.compileJava {
+    options.compilerArgs.add("-Xlint:unchecked")
+    options.compilerArgs.add("-Xlint:deprecation")
+}
+
 tasks.test {
     dependsOn("shadowJar")
 
