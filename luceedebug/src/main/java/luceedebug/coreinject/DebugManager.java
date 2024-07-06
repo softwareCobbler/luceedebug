@@ -391,11 +391,11 @@ public class DebugManager implements IDebugManager {
                                         /*boolean ignoreScopes*/ false
                                     );
 
-                                    Object evalResult = frame.getFrameContext().variables.get(resultName);
+                                    Object evalResult = UnsafeUtils.deprecatedScopeGet(frame.getFrameContext().variables, resultName);
                                     frame.getFrameContext().variables.remove(resultName);
 
                                     if (evalResult instanceof Map) {
-                                        Map<String, Object> struct = (Map)evalResult;
+                                        Map<String, Object> struct = UnsafeUtils.uncheckedCast(evalResult);
                                         var isOk = struct.get("ok");
                                         var result = struct.get("result");
                                         if (isOk instanceof Boolean) {

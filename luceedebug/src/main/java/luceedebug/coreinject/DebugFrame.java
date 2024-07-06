@@ -2,6 +2,7 @@ package luceedebug.coreinject;
 
 import lucee.runtime.PageContext;
 import lucee.runtime.PageContextImpl;
+import lucee.runtime.exp.PageException;
 import lucee.runtime.type.scope.LocalNotSupportedScope;
 
 import lucee.runtime.type.Collection;
@@ -127,7 +128,7 @@ public class DebugFrame implements IDebugFrame {
                 else if (this.variables instanceof lucee.runtime.type.scope.ClosureScope) {
                     // A closure scope is a variables scope wrapper containing a variable scope.
                     // Probably we could test here for if the closureScope contains a component scope, but just looking for `this` seems to be fine.
-                    return (lucee.runtime.type.Struct)this.variables.get("this");
+                    return (lucee.runtime.type.Struct)UnsafeUtils.deprecatedScopeGet(this.variables, "this");
                 }
                 else {
                     return null;
