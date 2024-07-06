@@ -6,13 +6,12 @@
  * User Manual available at https://docs.gradle.org/7.3/userguide/building_java_projects.html
  */
 
-import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import java.nio.file.Paths;
 
 plugins {
     java
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.owasp.dependencycheck") version "8.4.0" apply false
 }
 
@@ -111,17 +110,19 @@ tasks.shadowJar {
     // dependencies {
     //     exclude(dependency("x"))
     // }
-    dependsOn("makeMockCfSourceFile") // should only be in "dev" mode
-    dependsOn("relocateShadowJar")
-    dependsOn("javah")
+    //dependsOn("makeMockCfSourceFile") // should only be in "dev" mode
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+    setEnableRelocation(true)
+    relocationPrefix = "luceedebug_shadow"
+    //dependsOn("javah")
     archiveFileName.set("luceedebug.jar") // overwrites the non-shadowed jar but that's OK
 }
 
 // Shadow ALL dependencies:
-tasks.create<ConfigureShadowRelocation>("relocateShadowJar") {
-    target = tasks["shadowJar"] as ShadowJar
-    prefix = "luceedebug_shadow"
-}
+// tasks.create<ConfigureShadowRelocation>("relocateShadowJar") {
+//     target = tasks["shadowJar"] as ShadowJar
+//     prefix = "luceedebug_shadow"
+// }
 
 tasks.register("makeMockCfSourceFile") {
     dependsOn("classes")
