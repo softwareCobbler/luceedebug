@@ -7,12 +7,10 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import javax.servlet.ServletException;
@@ -34,7 +32,6 @@ import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
 import luceedebug.IDebugFrame;
 import luceedebug.IDebugManager;
-import luceedebug.coreinject.ValTracker.TaggedObject;
 
 public class DebugManager implements IDebugManager {
 
@@ -671,9 +668,9 @@ public class DebugManager implements IDebugManager {
                 return;
             }
             else {
-                long end = System.nanoTime();
-                double elapsed_ms = (end - request.__debug__startTime) / 1e6;
-                double stepsPerMs = request.__debug__steps / elapsed_ms;
+                // long end = System.nanoTime();
+                // double elapsed_ms = (end - request.__debug__startTime) / 1e6;
+                // double stepsPerMs = request.__debug__steps / elapsed_ms;
 
                 // System.out.println("  currentframedepth=" + frame.getDepth() + ", startframedepth=" + request.startDepth + ", notifying native of step occurence...");
                 // System.out.println("    " + request.__debug__steps + " cf steps in " + elapsed_ms + "ms for " + stepsPerMs + " steps/ms, overhead was " + (request.__debug__stepOverhead / 1e6) + "ms");

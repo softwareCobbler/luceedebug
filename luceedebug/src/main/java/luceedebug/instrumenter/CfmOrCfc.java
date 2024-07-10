@@ -6,13 +6,11 @@ import org.objectweb.asm.commons.GeneratorAdapter;
 import org.objectweb.asm.commons.Method;
 
 public class CfmOrCfc extends ClassVisitor {
-    private final String className;
     private Type thisType = null; // is not initialized until `visit`
     private String sourceName = "??????"; // is not initialized until `visitSource`
 
     public CfmOrCfc(int api, ClassWriter cw, String className) {
         super(api, cw);
-        this.className = className;
     }
 
     @Override

@@ -2,7 +2,6 @@ package luceedebug.coreinject;
 
 import lucee.runtime.PageContext;
 import lucee.runtime.PageContextImpl;
-import lucee.runtime.exp.PageException;
 import lucee.runtime.type.scope.LocalNotSupportedScope;
 
 import lucee.runtime.type.Collection;
