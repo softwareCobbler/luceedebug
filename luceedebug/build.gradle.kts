@@ -52,7 +52,7 @@ dependencies {
 
 
     compileOnly(files("extern/lucee-5.3.9.158-SNAPSHOT.jar"))
-    compileOnly(files("extern/5.3.9.158-SNAPSHOT.lco"))
+    compileOnly(files("extern/5.3.9.158-SNAPSHOT.jar"))
 
     // https://mvnrepository.com/artifact/org.eclipse.lsp4j/org.eclipse.lsp4j.debug
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.23.1")
