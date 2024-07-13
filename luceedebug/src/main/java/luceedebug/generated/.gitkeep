@@ -1,0 +1,4 @@
+# we write generated files into generated/ though it seems like we'd like
+# to write them into build/; but in build/, the vscode java plugin does
+# not find classes. So then we get errors in the IDE even though the gradle
+# build is fine.
