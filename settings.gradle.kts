@@ -1,3 +1,7 @@
 rootProject.name = "luceedebug-root"
 
-include("luceedebug")
+include("luceedebug")  
+
+pluginManagement {
+    includeBuild("buildPlugins")
+}

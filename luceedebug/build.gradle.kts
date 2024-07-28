@@ -9,10 +9,13 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import java.nio.file.Paths;
 
+import xbuild.XBuild.GenerateConstants
+
 plugins {
     java
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.owasp.dependencycheck") version "8.4.0" apply false
+    id("buildPluginX")
 }
 
 allprojects {
@@ -60,6 +63,7 @@ dependencies {
 }
 
 tasks.compileJava {
+    dependsOn("generateJavaConstantsFile")
     options.release = 11
     options.compilerArgs.add("-Xlint:unchecked")
     options.compilerArgs.add("-Xlint:deprecation")
@@ -97,9 +101,18 @@ tasks.jar {
     }
 }
 
+val luceedebugVersion = "2.0.413"
+
+tasks.register<GenerateConstants>("generateJavaConstantsFile") {
+    version = luceedebugVersion
+    // n.b. this ends up in src/luceedebug/generated, rather than build/...
+    // for the sake of ide autocomplete
+    className = "luceedebug.generated.Constants"
+}
+
 tasks.shadowJar {
     configurations = listOf(project.configurations.runtimeClasspath.get())
     setEnableRelocation(true)
     relocationPrefix = "luceedebug_shadow"
-    archiveFileName.set("luceedebug.jar") // overwrites the non-shadowed jar but that's OK
+    archiveFileName.set("luceedebug-" + luceedebugVersion + ".jar")
 }
