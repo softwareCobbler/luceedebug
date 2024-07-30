@@ -90,17 +90,19 @@ async function doit() {
         console.error("target tag (from env)=" + tag)
         throw Error("target commit based on supplied tag is not current HEAD?")
     }
+    
+    const libname = child_process.execSync("cd .. && gradlew printCurrentLibName --quiet").toString().replaceAll(/[^-a-z0-9-.]/ig, "")
 
     // run build 
-    child_process.execSync("cd .. && gradlew shadowJar", {stdio: "inherit"})
+    child_process.execSync("cd .. && gradlew clean shadowJar", {stdio: "inherit"})
 
-    const bytes = fs.readFileSync(path.resolve("../luceedebug/build/libs/luceedebug.jar"))
+    const bytes = fs.readFileSync(path.resolve(`../luceedebug/build/libs/${libname}`))
 
     // make release and get associated ID, then add file
     const {data: {id}} = await makeRelease(authToken, tag)
     // const id = <<>>
 
-    await addFileToRelease(authToken, id, "luceedebug.jar", bytes);
+    await addFileToRelease(authToken, id, libname, bytes);
 }
 
 // await doit();

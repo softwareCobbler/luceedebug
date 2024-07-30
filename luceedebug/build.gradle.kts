@@ -107,6 +107,7 @@ tasks.jar {
 }
 
 val luceedebugVersion = "2.0.12"
+var libfile = "luceedebug-" + luceedebugVersion + ".jar"
 
 tasks.register<GenerateConstants>("generateJavaConstantsFile") {
     version = luceedebugVersion
@@ -115,9 +116,13 @@ tasks.register<GenerateConstants>("generateJavaConstantsFile") {
     className = "luceedebug.generated.Constants"
 }
 
+tasks.register("printCurrentLibName") {
+    println(libfile)
+}
+
 tasks.shadowJar {
     configurations = listOf(project.configurations.runtimeClasspath.get())
     setEnableRelocation(true)
     relocationPrefix = "luceedebug_shadow"
-    archiveFileName.set("luceedebug-" + luceedebugVersion + ".jar")
+    archiveFileName.set(libfile)
 }
