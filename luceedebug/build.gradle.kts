@@ -107,7 +107,7 @@ tasks.jar {
 }
 
 val luceedebugVersion = "2.0.12"
-var libfile = "luceedebug-" + luceedebugVersion + ".jar"
+val libfile = "luceedebug-" + luceedebugVersion + ".jar"
 
 tasks.register<GenerateConstants>("generateJavaConstantsFile") {
     version = luceedebugVersion
