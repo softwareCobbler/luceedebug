@@ -301,10 +301,12 @@ public class LuceeVm implements ILuceeVm {
         if (jdwp_stays_suspended_in_this_method_as_a_worker == null) {
             System.out.println("Couldn't find helper method 'jdwp_stays_suspended_in_this_method_as_a_worker'");
             System.exit(1);
+            return null;
         }
         if (jdwp_getThread == null) {
             System.out.println("Couldn't find helper method 'jdwp_getThread'");
             System.exit(1);
+            return null;
         }
 
         JDWP_WORKER_CLASS_ID = refType.classObject().uniqueID();

@@ -6,6 +6,7 @@ import java.util.jar.JarFile;
 import java.io.File;
 
 import luceedebug.LuceeTransformer.ClassInjection;
+import luceedebug.generated.Constants;
 
 public class Agent {
     /**
@@ -188,7 +189,6 @@ public class Agent {
                 .toArray(size -> new ClassInjection[size]);
 
             final var config = new Config(Config.checkIfFileSystemIsCaseSensitive(parsedArgs.jarPath));
-            System.out.println("[luceedebug] fs is case sensitive: " + config.getFsIsCaseSensitive());
             final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort, config);
             inst.addTransformer(transformer);
             transformer.makeSystemOutPrintlnSafeForUseInTransformer();
@@ -198,6 +198,7 @@ public class Agent {
             System.exit(1);
         }
 
+        System.out.println("[luceedebug] version " + Constants.version);
         System.out.println("[luceedebug] agent premain complete");
     }
 }

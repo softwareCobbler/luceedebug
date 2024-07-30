@@ -1,6 +1,7 @@
 FROM lucee/lucee:5.3.10.120-tomcat9.0-jdk11-openjdk-2303
 
-ENV LUCEEDEBUG_JAR /build/luceedebug.jar
+# "@LUCEEDEBUG_JAR" replaced programmatically with filename
+ENV LUCEEDEBUG_JAR /build/@LUCEEDEBUG_JAR
 ENV SETENV_FILE /usr/local/tomcat/bin/setenv.sh
 
 #RUN apt-get update

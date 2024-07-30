@@ -6,14 +6,16 @@
  * User Manual available at https://docs.gradle.org/7.3/userguide/building_java_projects.html
  */
 
-import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import java.nio.file.Paths;
 
+import xbuild.XBuild.GenerateConstants
+
 plugins {
     java
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.owasp.dependencycheck") version "8.4.0" apply false
+    id("buildPluginX")
 }
 
 allprojects {
@@ -32,6 +34,8 @@ repositories {
 dependencies {
     // Use JUnit Jupiter for testing.
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
     // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-core
     testImplementation("com.github.docker-java:docker-java-core:3.3.0")
     // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-transport-httpclient5
@@ -53,7 +57,7 @@ dependencies {
 
 
     compileOnly(files("extern/lucee-5.3.9.158-SNAPSHOT.jar"))
-    compileOnly(files("extern/5.3.9.158-SNAPSHOT.lco"))
+    compileOnly(files("extern/5.3.9.158-SNAPSHOT.jar"))
 
     // https://mvnrepository.com/artifact/org.eclipse.lsp4j/org.eclipse.lsp4j.debug
     implementation("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.23.1")
@@ -61,9 +65,13 @@ dependencies {
 }
 
 java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(11))
-    }
+    sourceCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.compileJava {
+    dependsOn("generateJavaConstantsFile")
+    options.compilerArgs.add("-Xlint:unchecked")
+    options.compilerArgs.add("-Xlint:deprecation")
 }
 
 tasks.test {
@@ -92,111 +100,24 @@ tasks.jar {
                 "Can-Redefine-Classes" to "true",
                 "Bundle-SymbolicName" to "luceedebug-osgi",
                 "Bundle-Version" to "2.0.1.1",
-                "Export-Package" to "xlel.*,luceedebug.*"
+                "Export-Package" to "luceedebug.*"
             )
         )
     }
 }
 
-///val shadowjar by tasks.registering(ShadowJar::class)  {
+val luceedebugVersion = "2.0.11"
+
+tasks.register<GenerateConstants>("generateJavaConstantsFile") {
+    version = luceedebugVersion
+    // n.b. this ends up in src/luceedebug/generated, rather than build/...
+    // for the sake of ide autocomplete
+    className = "luceedebug.generated.Constants"
+}
+
 tasks.shadowJar {
-    // configurations = listOf(project.configurations.compileClasspath.get())
-    
-    // dependencies {
-    //     //exclude("lucee.runtime.*")
-    //     //exclude("5.3.9.158-SNAPSHOT.lco")
-    //     //exclude(dependency("org.lucee:lucee:5.3.9.141"))
-    // }
-    
-    // dependencies {
-    //     exclude(dependency("x"))
-    // }
-    dependsOn("makeMockCfSourceFile") // should only be in "dev" mode
-    dependsOn("relocateShadowJar")
-    dependsOn("javah")
-    archiveFileName.set("luceedebug.jar") // overwrites the non-shadowed jar but that's OK
+    configurations = listOf(project.configurations.runtimeClasspath.get())
+    setEnableRelocation(true)
+    relocationPrefix = "luceedebug_shadow"
+    archiveFileName.set("luceedebug-" + luceedebugVersion + ".jar")
 }
-
-// Shadow ALL dependencies:
-tasks.create<ConfigureShadowRelocation>("relocateShadowJar") {
-    target = tasks["shadowJar"] as ShadowJar
-    prefix = "luceedebug_shadow"
-}
-
-tasks.register("makeMockCfSourceFile") {
-    dependsOn("classes")
-    doLast {
-        javaexec {
-            mainClass.set("luceedebug.test.MakeMockCfFile")
-            classpath(sourceSets["main"].runtimeClasspath)
-        }
-    }
-}
-
-tasks.register<Copy>("javah") {
-    dependsOn("compileJava")
-    from(layout.buildDirectory.file("generated/sources/headers/java/main"))
-    include("*.h")
-    into(file("../../native-agent/include/luceedebug/native-generated"))
-}
-
-tasks.register("build-dev") {
-    dependsOn("makeMockCfSourceFile")
-    dependsOn("shadowJar")
-}
-
-// luceeplugin contains an osgi bundle
-tasks.register<Jar>("build-lucee-plugin") {
-    dependsOn("shadowJar")
-    manifest {
-        attributes(
-            mapOf(
-                "version" to "2.0.1.1",
-                "id" to "B2BC813A-D738-4076-B9FBD8BE45A953B7",
-                "name" to "luceedebug",
-                "start-bundles" to "true",
-            )
-        )
-    }
-    archiveFileName.value("luceedebug.lex")
-    val mainJarAbsPath = Paths.get(
-        (tasks["shadowJar"] as ShadowJar).destinationDirectory.get().toString(),
-        (tasks["shadowJar"] as ShadowJar).archiveFileName.get()
-    ).toFile();
-    from(mainJarAbsPath) {
-        into("jar")
-    }
-}
-
-tasks.register("advice-adapter") {
-    dependsOn("classes")
-    doLast {
-        javaexec {
-            mainClass.set("luceedebug.test.AdviceAdapter")
-            // classpath = sourceSets["main"].runtimeClasspath
-            classpath(sourceSets["main"].runtimeClasspath)
-        }
-        exec {
-            commandLine("javap", "-p", "-c", "-s", "-v", "build/classes/java/main/luceedebug/test/AdviceAdapterReceiver_xform.class")
-        }
-    }
-}
-
-tasks.register("field-visitor") {
-    dependsOn("classes")
-    doLast {
-        javaexec {
-            mainClass.set("luceedebug.test.FieldVisitor")
-            // classpath = sourceSets["main"].runtimeClasspath
-            classpath(sourceSets["main"].runtimeClasspath)
-        }
-        exec {
-            commandLine("javap", "-p", "-c", "-s", "-v", "build/classes/java/main/luceedebug/test/FieldVisitorReceiver_xform.class")
-        }
-    }
-}
-
-// tasks.named<Test>("test") {
-//     // Use JUnit Platform for unit tests.
-//     useJUnitPlatform()
-// }
