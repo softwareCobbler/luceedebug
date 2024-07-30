@@ -1,6 +1,10 @@
 package luceedebug.testutils;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -19,6 +23,8 @@ import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
+
+import luceedebug.generated.Constants;
 
 public class DockerUtils {
     public static DockerClient getDefaultDockerClient() {
@@ -45,6 +51,31 @@ public class DockerUtils {
         public String getImageID() { return imageID_; }
     }
 
+    @SuppressWarnings("unchecked")
+    static <T extends Throwable> T rethrowUnchecked(Object e) throws T {
+        throw (T) e;
+    }
+
+    /**
+     * The dockerFile needs some string replacements before we send it to the dockerClient to run.
+     * We transform it and write the results to a temp file, then offer up the temp file path to docker.
+     */
+    static File mungeDockerfile(File dockerFile) {
+        try {
+            var s = new String(Files.readAllBytes(dockerFile.toPath()))
+                .replaceAll("@LUCEEDEBUG_JAR", "luceedebug-" + Constants.version + ".jar");
+            var f = File.createTempFile("luceedebug-testing-", "", Paths.get("../test/scratch").toAbsolutePath().normalize().toFile());
+            f.deleteOnExit();
+            var bytes = s.getBytes(StandardCharsets.UTF_8);
+            Files.write(f.toPath(), bytes);
+            return f;
+        }
+        catch (Throwable e) {
+            rethrowUnchecked(e);
+            return null;
+        }
+    }
+
     /**
      * Docker won't actually build a new image if the dockerfile hasn't changed, is that right?
      * That would be the desireable behavior.
@@ -52,7 +83,7 @@ public class DockerUtils {
     public static ImageID buildOrGetImage(DockerClient dockerClient, File dockerFile) {
         return new ImageID(
             dockerClient
-                .buildImageCmd(dockerFile)
+                .buildImageCmd(mungeDockerfile(dockerFile))
                 .start()
                 .awaitImageId()
         );
