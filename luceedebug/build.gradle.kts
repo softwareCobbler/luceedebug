@@ -62,9 +62,12 @@ dependencies {
 
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+}
+
 tasks.compileJava {
     dependsOn("generateJavaConstantsFile")
-    options.release = 11
     options.compilerArgs.add("-Xlint:unchecked")
     options.compilerArgs.add("-Xlint:deprecation")
 }
