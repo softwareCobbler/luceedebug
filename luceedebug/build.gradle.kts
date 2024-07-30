@@ -106,7 +106,7 @@ tasks.jar {
     }
 }
 
-val luceedebugVersion = "2.0.11"
+val luceedebugVersion = "2.0.12"
 
 tasks.register<GenerateConstants>("generateJavaConstantsFile") {
     version = luceedebugVersion
