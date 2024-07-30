@@ -14,7 +14,7 @@ The java agent needs a particular invocation and needs to be run as part of the 
 The VS Code client extension is available as `luceedebug` when searching in the VS Code extensions pane (or it can be built locally, see subsequent instructions).
 
 ## Java Agent
-Min supported JDK is JDK11
+Min supported JDK is JDK11. Building requires JDK17 or higher.
 
 Built jars are available via github 'releases'. The most recent build is https://github.com/softwareCobbler/luceedebug/releases/latest
 
