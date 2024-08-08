@@ -606,10 +606,6 @@ public class DebugManager implements IDebugManager {
         stepRequestByThread.remove(thread);
     }
 
-    static public boolean isStepNotificationEntryFunc(String methodName) {
-        return methodName.startsWith("luceedebug_stepNotificationEntry_");
-    }
-
     public void luceedebug_stepNotificationEntry_step(int lineNumber) {
         final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
         Thread currentThread = Thread.currentThread();
