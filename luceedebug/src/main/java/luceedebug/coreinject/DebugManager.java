@@ -366,53 +366,7 @@ public class DebugManager implements IDebugManager {
                             .doWorkInThisFrame((Supplier<Either<String,Object>>)() -> {
                                 try {
                                     lucee.runtime.engine.ThreadLocalPageContext.register(frame.getFrameContext().pageContext);
-                                    // assignment to result var of a name of our choosing is expected safe because:
-                                    //  - prefix shouldn't clash with user variables
-                                    //  - we are synchronized on PageContext by virtue of `doWorkInThisFrame`
-                                    //  - we delete it after grabbing the result
-                                    // At this time, `lucee.runtime.compiler.Renderer.loadPage` will
-                                    // cache compilations based on the hash of the source text; so, using the same result name
-                                    // every time ensures we don't need to recompile a particular expression every time.
-                                    final String resultName = "__luceedebug__evalResult";
-                                    final String srcText = ""
-                                        + "<cfscript>"
-                                        + "try { variables['" + resultName + "'] = {'ok': true, 'result': " + expr + " } }"
-                                        + "catch (any e) { variables['" + resultName + "'] = {'ok': false, 'result': e.message } }"
-                                        + "</cfscript>";
-
-                                    lucee.runtime.compiler.Renderer.tag(
-                                        /*PageContext pc*/ frame.getFrameContext().pageContext,
-                                        /*String cfml*/ srcText,
-                                        /*int dialect*/ DIALECT_CFML,
-                                        /*boolean catchOutput*/ false,
-                                        /*boolean ignoreScopes*/ false
-                                    );
-
-                                    Object evalResult = UnsafeUtils.deprecatedScopeGet(frame.getFrameContext().variables, resultName);
-                                    frame.getFrameContext().variables.remove(resultName);
-
-                                    if (evalResult instanceof Map) {
-                                        Map<String, Object> struct = UnsafeUtils.uncheckedCast(evalResult);
-                                        var isOk = struct.get("ok");
-                                        var result = struct.get("result");
-                                        if (isOk instanceof Boolean) {
-                                            if ((Boolean)isOk) {
-                                                return Either.Right(result);
-                                            }
-                                            else {
-                                                var msg = result instanceof String ? (String)result : "Couldn't evaluate expression - expression threw an exception, but resulting message was non-string";
-                                                return Either.Left(msg);
-                                            }
-                                        }
-                                        else {
-                                            var isOkClassName = isOk == null ? "null" : isOk.getClass().getName();
-                                            return Either.Left("Couldn't evaluate expression - result `ok` property was non-boolean (got " + isOkClassName + ")");
-                                        }
-                                    }
-                                    else {
-                                        var evalResultClassName = evalResult == null ? "null" : evalResult.getClass().getName();
-                                        return Either.Left("Evaluated expression returned non-Map result of type '" + evalResultClassName + "'");
-                                    }
+                                    return ExprEvaluator.eval(frame, expr);
                                 }
                                 catch (Throwable e) {
                                     return Either.Left(e.getMessage());
