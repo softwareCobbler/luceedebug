@@ -118,8 +118,6 @@ class ExprEvaluator {
         }
 
         static Optional<Evaluator> maybeGet() {
-            final var lookup = MethodHandles.lookup();
-
             try {
                 final MethodType lucee5_evaluateExpr = MethodType.methodType(
                     /*returntype*/lucee.runtime.compiler.Renderer.Result.class,
@@ -129,7 +127,9 @@ class ExprEvaluator {
                     /*boolean catchOutput*/ boolean.class,
                     /*boolean ignoreScopes*/ boolean.class
                 );
-                var methodHandle = lookup.findStatic(lucee.runtime.compiler.Renderer.class, "tag", lucee5_evaluateExpr);
+                var methodHandle = MethodHandles
+                    .lookup()
+                    .findStatic(lucee.runtime.compiler.Renderer.class, "tag", lucee5_evaluateExpr);
                 return Optional.of(new Lucee5Evaluator(methodHandle));
             }
             catch (NoSuchMethodException e) {
@@ -157,7 +157,6 @@ class ExprEvaluator {
         }
 
         static Optional<Evaluator> maybeGet() {
-            final var lookup = MethodHandles.lookup();
             try {
                 final MethodType lucee6_evaluateExpr = MethodType.methodType(
                     /*returntype*/lucee.runtime.compiler.Renderer.Result.class,
@@ -166,7 +165,9 @@ class ExprEvaluator {
                     /*boolean catchOutput*/ boolean.class,
                     /*boolean ignoreScopes*/ boolean.class
                 );
-                var methodHandle = lookup.findStatic(lucee.runtime.compiler.Renderer.class, "tag", lucee6_evaluateExpr);
+                var methodHandle = MethodHandles
+                    .lookup()
+                    .findStatic(lucee.runtime.compiler.Renderer.class, "tag", lucee6_evaluateExpr);
                 return Optional.of(new Lucee6Evaluator(methodHandle));
             }
             catch (NoSuchMethodException e) {
