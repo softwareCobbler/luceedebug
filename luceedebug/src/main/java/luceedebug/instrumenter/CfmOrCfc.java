@@ -188,6 +188,7 @@ public class CfmOrCfc extends ClassVisitor {
 
         if (!isWrappingMethod && (
             name.equals("call")
+            || name.startsWith("call_") // call_001, call_002, etc.
             || name.startsWith("udfCall")
             || name.equals("initComponent")
             || name.equals("newInstance")
