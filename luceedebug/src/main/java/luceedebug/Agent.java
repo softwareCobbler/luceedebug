@@ -1,7 +1,9 @@
 package luceedebug;
 
 import java.lang.instrument.*;
-
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.jar.JarFile;
 import java.io.File;
 
@@ -132,6 +134,70 @@ public class Agent {
         }
     }
 
+    /**
+     * There is probably a way to do this automatically, but we do it manually for now.
+     * The injected classes need to be injected in a particular order with respect to class hierarchy.
+     * For classes that don't derive from anything, order is irrelevant; but if, within the coreinject package,
+     * there are hierarchies, the supertypes need to be loaded first, then the subtype, then the subsubtype, and so on.
+     * If a class is added to coreinject and we do not have ordering information for it here, the agent should fail to start
+     * with a message regarding which class was missing this information.
+     */
+    private static class CoreInjectionLinearization {
+        private static Map<String, Integer> linearizedCoreInjectClasses() {
+            var result = new HashMap<String, Integer>();
+    
+            result.put("luceedebug.coreinject.LuceeVm$BpLineAndId", 0);
+            result.put("luceedebug.coreinject.DebugManager$2", 0);
+            result.put("luceedebug.coreinject.DebugManager$CfStepRequest", 0);
+            result.put("luceedebug.coreinject.LuceeVm$ReplayableCfBreakpointRequest", 0);
+            result.put("luceedebug.coreinject.Utils", 0);
+            result.put("luceedebug.coreinject.ValTracker$WeakTaggedObject", 0);
+            result.put("luceedebug.coreinject.DebugManager$1", 0);
+            result.put("luceedebug.coreinject.ClosureScopeLocalScopeAccessorShim", 0);
+            result.put("luceedebug.coreinject.ComponentScopeMarkerTraitShim", 0);
+            result.put("luceedebug.coreinject.DebugFrame$FrameContext", 0);
+            result.put("luceedebug.coreinject.LuceeVm$SteppingState", 0);
+            result.put("luceedebug.coreinject.LuceeVm$KlassMap", 0);
+            result.put("luceedebug.coreinject.LuceeVm$JdwpWorker", 0);
+            result.put("luceedebug.coreinject.ValTracker$TaggedObject", 0);
+            result.put("luceedebug.coreinject.DebugEntity", 0);
+            result.put("luceedebug.coreinject.Breakpoint", 0);
+            result.put("luceedebug.coreinject.CfValueDebuggerBridge$MarkerTrait", 0);
+            result.put("luceedebug.coreinject.ValTracker", 0);
+            result.put("luceedebug.coreinject.UnsafeUtils", 0);
+            result.put("luceedebug.coreinject.DebugFrame", 0);
+            result.put("luceedebug.coreinject.CfValueDebuggerBridge$MarkerTrait$Scope", 0);
+            result.put("luceedebug.coreinject.DebugManager$PageContextAndOutputStream", 0);
+            result.put("luceedebug.coreinject.LuceeVm$ThreadMap", 0);
+            result.put("luceedebug.coreinject.DebugManager", 0);
+            result.put("luceedebug.coreinject.LuceeVm$JdwpStaticCallable", 0);
+            result.put("luceedebug.coreinject.CfValueDebuggerBridge", 0);
+            result.put("luceedebug.coreinject.DebugFrame$FrameContext$SupplierOrNull", 0);
+            result.put("luceedebug.coreinject.LuceeVm", 0);
+            result.put("luceedebug.coreinject.ValTracker$CleanerRunner", 0);
+            result.put("luceedebug.coreinject.ExprEvaluator", 0);
+
+            result.put("luceedebug.coreinject.ExprEvaluator$Evaluator", 0);
+            result.put("luceedebug.coreinject.ExprEvaluator$Lucee6Evaluator", 1);
+            result.put("luceedebug.coreinject.ExprEvaluator$Lucee5Evaluator", 1);
+    
+            return result;
+        }
+    
+        public static Comparator<ClassInjection> comparator() {
+            final Map<String, Integer> ordering = linearizedCoreInjectClasses();
+            return Comparator.comparing(injection -> {
+                var v = ordering.get(injection.name);
+                if (v == null) {
+                    throw new RuntimeException("Missing linearized sort order information for class '" + injection.name + "'");
+                }
+                else {
+                    return v;
+                }
+            });
+        }
+    }
+
     public static void premain(String argString, Instrumentation inst) throws Throwable {
         final var parsedArgs = new AgentArgs(argString);
 
@@ -186,12 +252,7 @@ public class Agent {
                         return null;
                     }
                 })
-                .sorted((l,r) -> {
-                    // we don't need to sort, if we have no dependencies from within coreinject into coreinject
-                    // (i.e. there is class/interface in coreinject.* that extends/implements another class/interface in coreinject.*)
-                    // otherwise, we'd have to inject parents first, then children, then grandchildren, etc.
-                    return 0;
-                })
+                .sorted(CoreInjectionLinearization.comparator())
                 .toArray(size -> new ClassInjection[size]);
 
             final var config = new Config(Config.checkIfFileSystemIsCaseSensitive(parsedArgs.jarPath));
