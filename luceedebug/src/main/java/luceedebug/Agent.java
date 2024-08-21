@@ -141,7 +141,13 @@ public class Agent {
             System.exit(1);
         }
 
+        /**
+         * Generally useful for debugging, and also has the side-effect of causing the engine
+         * to write the full absolute file paths into the generated classfiles, which we need
+         * to match up classfiles to IDE sourcefiles.
+         */
         System.setProperty("lucee.requesttimeout", "false");
+
         //
         // This used to be accomplished by instrumenting the Felix constructor (that we expect Lucee to be using).
         // Lucee later added the ability to specify these as envvars or system properties, see:
