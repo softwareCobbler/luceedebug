@@ -710,7 +710,10 @@ public class LuceeVm implements ILuceeVm {
                 lineMap.put(loc.lineNumber(), loc);
             }
 
-            this.sourceName = config.canonicalizedPath(sourceName);
+            this.sourceName = new OriginalAndTransformedString(
+                sourceName,
+                Config.canonicalizeFileName(sourceName)
+            );
             this.lineMap = lineMap;
             this.refType = refType;
         }

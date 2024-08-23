@@ -48,24 +48,29 @@ public class DapServer implements IDebugProtocolServer {
      * if no transform matches, returns the input string unmodified
      */
     private String applyPathTransforms(String s, TransformRunner runner) {
+        var canonicalized = Config.canonicalizeFileName(s);
         for (var transform : pathTransforms) {
-            var result = runner.run(transform, s);
+            var result = runner.run(transform, canonicalized);
             if (result.isPresent()) {
-                return config_.canonicalizePath(result.get());
+                return result.get();
             }
         }
         // no transform matched, but still needs canonicalization
-        return config_.canonicalizePath(s);
+        return canonicalized;
     }
 
     private String applyPathTransformsIdeToCf(String s) {
-        return applyPathTransforms(
+        var transformed = applyPathTransforms(
             s,
             (transform, path) -> transform.ideToServer(path)
-        ).replaceAll("\\\\|/", Matcher.quoteReplacement(File.separator));
+        );
+
+        // recanonicalize after transform, which may have used a non-canonical replacement
+        return Config.canonicalizeFileName(transformed);
     }
     
     private String applyPathTransformsCfToIde(String s) {
+        // n.b. do _not_ recanonicalize when sending back to IDE
         return applyPathTransforms(
             s,
             (transform, path) -> transform.serverToIde(path)
@@ -385,7 +390,10 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var path = new OriginalAndTransformedString(args.getSource().getPath(), applyPathTransformsIdeToCf(args.getSource().getPath()));
+        final var path = new OriginalAndTransformedString(
+            args.getSource().getPath(),
+            applyPathTransformsIdeToCf(args.getSource().getPath())
+        );
         logger.finest("bp for " + path.original + " -> " + path.transformed);
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
