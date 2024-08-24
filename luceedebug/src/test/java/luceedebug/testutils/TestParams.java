@@ -22,11 +22,16 @@ public class TestParams {
             assert f.exists() : "No such file: '" + f + "'";
             return f;
         }
+
+        @Override
+        public String toString() {
+            return "{engineVersion=" + engineVersion + ", dockerFile=" + dockerFile + "}";
+        }
     }
 
     public static LuceeAndDockerInfo[] getLuceeAndDockerInfo() {
         return new LuceeAndDockerInfo[] {
-            //new DockerInfo(5, "../test/docker/5.3.10.120"),
+            new LuceeAndDockerInfo(5, "../test/docker/5.3.10.120"),
             new LuceeAndDockerInfo(6, "../test/docker/6.1.0.243")
         };
     }
