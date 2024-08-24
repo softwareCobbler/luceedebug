@@ -5,11 +5,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class TestParams {
-    public static class DockerInfo {
+    public static class LuceeAndDockerInfo {
+        // we'll probably eventually need to major/minor/patch info, but this is good enough for current needs
+        public final int engineVersion;
         public final Path luceedebugProjectRoot = Paths.get("").toAbsolutePath();
         public final File dockerFile;
         
-        DockerInfo(String projectRelativeDockerRoot) {
+        LuceeAndDockerInfo(int engineVersion, String projectRelativeDockerRoot) {
+            this.engineVersion = engineVersion;
             Path v = luceedebugProjectRoot.resolve(projectRelativeDockerRoot).normalize();
             this.dockerFile = v.resolve("Dockerfile").toFile();
         }
@@ -21,9 +24,10 @@ public class TestParams {
         }
     }
 
-    public static DockerInfo[] getDockerFilePaths() {
-        return new DockerInfo[] {
-            new DockerInfo("../test/docker/5.3.10.120")
+    public static LuceeAndDockerInfo[] getLuceeAndDockerInfo() {
+        return new LuceeAndDockerInfo[] {
+            //new DockerInfo(5, "../test/docker/5.3.10.120"),
+            new LuceeAndDockerInfo(6, "../test/docker/6.1.0.243")
         };
     }
 }

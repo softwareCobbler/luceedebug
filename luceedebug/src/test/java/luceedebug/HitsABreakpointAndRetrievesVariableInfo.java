@@ -23,12 +23,12 @@ import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
 import luceedebug.testutils.DockerUtils.HostPortBindings;
 import luceedebug.testutils.LuceeUtils;
-import luceedebug.testutils.TestParams.DockerInfo;
+import luceedebug.testutils.TestParams.LuceeAndDockerInfo;
 
 class HitsABreakpointAndRetrievesVariableInfo {
     @ParameterizedTest
-    @MethodSource("luceedebug.testutils.TestParams#getDockerFilePaths")
-    void a(DockerInfo dockerInfo) throws Throwable {
+    @MethodSource("luceedebug.testutils.TestParams#getLuceeAndDockerInfo")
+    void a(LuceeAndDockerInfo dockerInfo) throws Throwable {
         final DockerClient dockerClient = DockerUtils.getDefaultDockerClient();
 
         final String imageID = DockerUtils

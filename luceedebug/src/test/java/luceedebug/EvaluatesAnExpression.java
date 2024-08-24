@@ -17,15 +17,15 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
 import luceedebug.testutils.LuceeUtils;
-import luceedebug.testutils.TestParams.DockerInfo;
+import luceedebug.testutils.TestParams.LuceeAndDockerInfo;
 import luceedebug.testutils.DockerUtils.HostPortBindings;
 
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
 class EvaluatesAnExpression {
     @ParameterizedTest
-    @MethodSource("luceedebug.testutils.TestParams#getDockerFilePaths")
-    void a(DockerInfo dockerInfo) throws Throwable {
+    @MethodSource("luceedebug.testutils.TestParams#getLuceeAndDockerInfo")
+    void a(LuceeAndDockerInfo dockerInfo) throws Throwable {
         final DockerClient dockerClient = DockerUtils.getDefaultDockerClient();
 
         final String imageID = DockerUtils
