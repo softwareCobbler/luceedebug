@@ -1,6 +1,5 @@
 package luceedebug;
 
-import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -9,11 +8,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.lsp4j.debug.*;
@@ -34,47 +31,36 @@ public class DapServer implements IDebugProtocolServer {
     private final Config config_;
     private ArrayList<IPathTransform> pathTransforms = new ArrayList<>();
 
-    interface TransformRunner {
-        Optional<String> run(IPathTransform transform, String s);
-    }
-
     // for dev, system.out was fine, in some containers, others totally suppress it and it doesn't even 
     // end up in log files.
     // this is all jacked up, on runwar builds it spits out two lines per call to `logger.info(...)` message, the first one being [ERROR] which is not right
     private static final Logger logger = Logger.getLogger("luceedebug");
     
-    /**
-     * runs all the transforms until one matches and produces a result
-     * if no transform matches, returns the input string unmodified
-     */
-    private String applyPathTransforms(String s, TransformRunner runner) {
-        var canonicalized = Config.canonicalizeFileName(s);
+    private String applyPathTransformsIdeToCf(String s) {
         for (var transform : pathTransforms) {
-            var result = runner.run(transform, canonicalized);
+            var result = transform.ideToServer(s);
+            if (result.isPresent()) {
+                return Config.canonicalizeFileName(result.get());
+            }
+        }
+
+        // no transform matched, but still needs canonicalization
+        return Config.canonicalizeFileName(s);
+    }
+    
+    /**
+     * n.b. do _not_ canonicalize when sending back to IDE
+     */
+    private String applyPathTransformsServerToIde(String s) {
+        for (var transform : pathTransforms) {
+            var result = transform.serverToIde(s);
             if (result.isPresent()) {
                 return result.get();
             }
         }
-        // no transform matched, but still needs canonicalization
-        return canonicalized;
-    }
 
-    private String applyPathTransformsIdeToCf(String s) {
-        var transformed = applyPathTransforms(
-            s,
-            (transform, path) -> transform.ideToServer(path)
-        );
-
-        // recanonicalize after transform, which may have used a non-canonical replacement
-        return Config.canonicalizeFileName(transformed);
-    }
-    
-    private String applyPathTransformsCfToIde(String s) {
-        // n.b. do _not_ recanonicalize when sending back to IDE
-        return applyPathTransforms(
-            s,
-            (transform, path) -> transform.serverToIde(path)
-        );
+        // no match
+        return s;
     }
 
     private IDebugProtocolClient clientProxy_;
@@ -328,7 +314,7 @@ public class DapServer implements IDebugProtocolServer {
 
         for (var cfFrame : luceeVm_.getStackTrace(args.getThreadId())) {
             final var source = new Source();
-            source.setPath(applyPathTransformsCfToIde(cfFrame.getSourceFilePath()));
+            source.setPath(applyPathTransformsServerToIde(cfFrame.getSourceFilePath()));
     
             final var lspFrame = new org.eclipse.lsp4j.debug.StackFrame();
             lspFrame.setId((int)cfFrame.getId());
@@ -752,7 +738,7 @@ public class DapServer implements IDebugProtocolServer {
         final var serverPath = luceeVm_.getSourcePathForVariablesRef(args.getVariablesReference());
 
         if (serverPath != null) {
-            response.setPath(applyPathTransformsCfToIde(serverPath));
+            response.setPath(applyPathTransformsServerToIde(serverPath));
         }
         else {
             response.setPath(null);
