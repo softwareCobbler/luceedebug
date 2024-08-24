@@ -25,6 +25,8 @@ import luceedebug.testutils.DockerUtils.HostPortBindings;
 import luceedebug.testutils.LuceeUtils;
 import luceedebug.testutils.TestParams.LuceeAndDockerInfo;
 
+import static luceedebug.testutils.Utils.unreachable;
+
 class HitsABreakpointAndRetrievesVariableInfo {
     @ParameterizedTest
     @MethodSource("luceedebug.testutils.TestParams#getLuceeAndDockerInfo")
@@ -133,7 +135,16 @@ class HitsABreakpointAndRetrievesVariableInfo {
             }).get();
 
             assertNotNull(target, "got expected variable");
-            assertEquals(target.getValue(), "42.0");
+            
+            if (dockerInfo.engineVersion == 5) {
+                assertEquals("42.0", target.getValue());
+            }
+            else if (dockerInfo.engineVersion == 6) {
+                assertEquals("42", target.getValue());
+            }
+            else {
+                unreachable();
+            }
 
             DapUtils.continue_(dapServer, threadID);
             
