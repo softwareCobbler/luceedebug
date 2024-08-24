@@ -5,7 +5,6 @@ version: '3.6'
 
 services:
   lucee:
-    #command: ls /bind-mount
     #image: lucee/lucee:5.3.10.120-tomcat9.0-jdk11-openjdk-2303
     image: luceedebug
     container_name: luceedebug
@@ -14,8 +13,8 @@ services:
       - 10000:10000
     volumes:
       - type: bind
-        source: ../../luceedebug/build/libs/
+        source: ../../../luceedebug/build/libs/
         target: /build/
       - type: bind
-        source: ./
+        source: ../
         target: /var/www/

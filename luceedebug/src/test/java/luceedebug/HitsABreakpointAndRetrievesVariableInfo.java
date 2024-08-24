@@ -3,8 +3,6 @@ package luceedebug;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -13,7 +11,8 @@ import org.eclipse.lsp4j.debug.Variable;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.github.dockerjava.api.DockerClient;
 import com.google.api.client.http.GenericUrl;
@@ -24,25 +23,24 @@ import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
 import luceedebug.testutils.DockerUtils.HostPortBindings;
 import luceedebug.testutils.LuceeUtils;
+import luceedebug.testutils.TestParams.DockerInfo;
 
 class HitsABreakpointAndRetrievesVariableInfo {
-    @Test
-    void a() throws Throwable {
-        final Path projectRoot = Paths.get("").toAbsolutePath();
-        final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
-
+    @ParameterizedTest
+    @MethodSource("luceedebug.testutils.TestParams#getDockerFilePaths")
+    void a(DockerInfo dockerInfo) throws Throwable {
         final DockerClient dockerClient = DockerUtils.getDefaultDockerClient();
 
         final String imageID = DockerUtils
-            .buildOrGetImage(dockerClient, dockerTestDir.resolve("Dockerfile").toFile())
+            .buildOrGetImage(dockerClient, dockerInfo.dockerFile)
             .getImageID();
 
         final String containerID = DockerUtils
             .getFreshDefaultContainer(
                 dockerClient,
                 imageID,
-                projectRoot.toFile(),
-                dockerTestDir.resolve("app1").toFile(),
+                dockerInfo.luceedebugProjectRoot.toFile(),
+                dockerInfo.getTestWebRoot("app1"),
                 new int[][]{
                     new int[]{8888,8888},
                     new int[]{10000,10000}

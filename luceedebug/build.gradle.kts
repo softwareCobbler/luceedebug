@@ -21,10 +21,11 @@ repositories {
 }
 
 dependencies {
-    // Use JUnit Jupiter for testing.
-    testImplementation("org.junit.jupiter:junit-jupiter:5.7.2")
+    // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-
+    // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-params
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.11.0")
     // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-core
     testImplementation("com.github.docker-java:docker-java-core:3.3.0")
     // https://mvnrepository.com/artifact/com.github.docker-java/docker-java-transport-httpclient5
