@@ -50,16 +50,8 @@ public class Config {
         return fsIsCaseSensitive_;
     }
 
-    public String canonicalizePath(String path) {
-        if (fsIsCaseSensitive_) {
-            return path;
-        }
-        else {
-            return path.toLowerCase();
-        }
+    public static String canonicalizeFileName(String s) {
+        return s.replaceAll("[\\\\/]+", "/").toLowerCase();
     }
 
-    public OriginalAndTransformedString canonicalizedPath(String path) {
-        return new OriginalAndTransformedString(path, canonicalizePath(path));
-    }
 }

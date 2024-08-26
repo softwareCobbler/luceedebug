@@ -31,6 +31,9 @@ public interface IDebugManager {
     // These must be the only "entry points" from lucee compiled CF files into luceedebug.
     public void luceedebug_stepNotificationEntry_step(int currentLine);
     public void luceedebug_stepNotificationEntry_stepAfterCompletedUdfCall();
+    static public boolean isStepNotificationEntryFunc(String methodName) {
+        return methodName.startsWith("luceedebug_stepNotificationEntry_");
+    }
 
     public void registerStepRequest(Thread thread, int stepType);
     public void clearStepRequest(Thread thread);

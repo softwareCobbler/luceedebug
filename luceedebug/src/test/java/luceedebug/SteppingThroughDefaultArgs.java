@@ -1,13 +1,13 @@
 package luceedebug;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -19,28 +19,27 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import luceedebug.testutils.DapUtils;
 import luceedebug.testutils.DockerUtils;
 import luceedebug.testutils.LuceeUtils;
+import luceedebug.testutils.TestParams.LuceeAndDockerInfo;
 import luceedebug.testutils.DockerUtils.HostPortBindings;
 
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 
 class SteppingThroughDefaultArgs {
-    @Test
-    void a() throws Throwable {
-        final Path projectRoot = Paths.get("").toAbsolutePath();
-        final Path dockerTestDir = projectRoot.resolve("../test/docker").normalize();
-
+    @ParameterizedTest
+    @MethodSource("luceedebug.testutils.TestParams#getLuceeAndDockerInfo")
+    void a(LuceeAndDockerInfo dockerInfo) throws Throwable {
         final DockerClient dockerClient = DockerUtils.getDefaultDockerClient();
 
         final String imageID = DockerUtils
-            .buildOrGetImage(dockerClient, dockerTestDir.resolve("Dockerfile").toFile())
+            .buildOrGetImage(dockerClient, dockerInfo.dockerFile)
             .getImageID();
 
         final String containerID = DockerUtils
             .getFreshDefaultContainer(
                 dockerClient,
                 imageID,
-                projectRoot.toFile(),
-                dockerTestDir.resolve("stepping_through_default_args").toFile(),
+                dockerInfo.luceedebugProjectRoot.toFile(),
+                dockerInfo.getTestWebRoot("stepping_through_default_args"),
                 new int[][]{
                     new int[]{8888,8888},
                     new int[]{10000,10000}

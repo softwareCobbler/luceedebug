@@ -383,7 +383,7 @@ public class LuceeVm implements ILuceeVm {
                      *    where X is larger than the number of frames on the stack, we'll get an exception.
                      */
                     for (int i = minDistanceToLuceedebugBaseFrame; i < Integer.MAX_VALUE; i++) {
-                        if (DebugManager.isStepNotificationEntryFunc(threadRef.frame(i).location().method().name())) {
+                        if (IDebugManager.isStepNotificationEntryFunc(threadRef.frame(i).location().method().name())) {
                             var stepInvokingCfFrame = threadRef.frame(i+1);
                             var location = stepInvokingCfFrame
                                 .location()
@@ -710,7 +710,10 @@ public class LuceeVm implements ILuceeVm {
                 lineMap.put(loc.lineNumber(), loc);
             }
 
-            this.sourceName = config.canonicalizedPath(sourceName);
+            this.sourceName = new OriginalAndTransformedString(
+                sourceName,
+                Config.canonicalizeFileName(sourceName)
+            );
             this.lineMap = lineMap;
             this.refType = refType;
         }
