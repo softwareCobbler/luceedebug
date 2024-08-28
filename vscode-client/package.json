@@ -76,8 +76,7 @@
       },
       {
         "command": "luceedebug.debugBreakpointBindings",
-        "title": "luceedebug: show class and breakpoint info",
-        "enablement": "debugType == 'cfml'"
+        "title": "luceedebug: show class and breakpoint info"
       },
       {
         "command": "luceedebug.openFileForVariableSourcePath",

@@ -162,6 +162,10 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.workspace.registerTextDocumentContentProvider("luceedebug", luceedebugTextDocumentProvider);
 	context.subscriptions.push(
 		vscode.commands.registerCommand("luceedebug.debugBreakpointBindings", async () => {
+			if (!currentDebugSession) {
+				throw Error("luceedebug is not currently connected to Lucee, cannot debug breakpoints.")
+			}
+
 			interface DebugBreakpointBindingsResponse {
 				canonicalFilenames: string[],
 				breakpoints: [string, string][],
