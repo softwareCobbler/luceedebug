@@ -143,7 +143,25 @@
             "port": 8000
           }
         ],
-        "configurationSnippets": [],
+        "configurationSnippets": [
+          {
+            "label": "luceedebug: Attach",
+            "description": "Default configuration to connect to Lucee",
+            "body": {
+              "type": "cfml",
+              "request": "attach",
+              "name": "Attach to server",
+              "hostName": "localhost",
+              "pathTransforms": [
+                {
+                  "idePrefix": "^\"\\${workspaceFolder}\"",
+                  "serverPrefix": "/app"
+                }
+              ],
+              "port": 8000
+            }
+          }
+        ],
         "variables": {}
       }
     ]
