@@ -1,7 +1,7 @@
 {
   "name": "luceedebug",
   "publisher": "DavidRogers",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "VS Code client for luceedebug backend.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -15,6 +15,7 @@
   "activationEvents": [
     "onDebugResolve:cfml"
   ],
+  "categories": ["Debuggers"],
   "repository": {
 		"type": "git",
 		"url": "https://github.com/softwareCobbler/luceedebug"
