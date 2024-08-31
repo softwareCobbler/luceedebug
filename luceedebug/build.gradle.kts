@@ -96,7 +96,7 @@ tasks.jar {
     }
 }
 
-val luceedebugVersion = "2.0.13.2"
+val luceedebugVersion = "2.0.14"
 val libfile = "luceedebug-" + luceedebugVersion + ".jar"
 
 // TODO: this should, but does not currently, participate in the `clean` task, so the generated file sticks around after invoking `clean`.
