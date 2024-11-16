@@ -233,6 +233,12 @@ public class Agent {
         //
         System.setProperty("org.osgi.framework.bootdelegation", "com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug,luceedebug_shadow.*");
 
+        // touch System.out before agent is loaded, otherwise trying to print from within the agent during jvm initialization phase
+        // can trigger stackoverflows. And note that System.out.println("") doesn't seem to work, as if printing the empty string
+        // early returns, and skips whatever classloading we need to do.
+        // TODO: clarify the exact failure case we are attempting to workaround here.
+        System.out.println("[luceedebug] version " + Constants.version);
+
         try (var jarFile = new JarFile(parsedArgs.jarPath)) {
             inst.appendToSystemClassLoaderSearch(jarFile);
             var classInjections = jarFile
@@ -258,14 +264,12 @@ public class Agent {
             final var config = new Config(Config.checkIfFileSystemIsCaseSensitive(parsedArgs.jarPath));
             final var transformer = new LuceeTransformer(classInjections, parsedArgs.jdwpHost, parsedArgs.jdwpPort, parsedArgs.debugHost, parsedArgs.debugPort, config);
             inst.addTransformer(transformer);
-            transformer.makeSystemOutPrintlnSafeForUseInTransformer();
         }
         catch (Throwable e) {
             e.printStackTrace();
             System.exit(1);
         }
 
-        System.out.println("[luceedebug] version " + Constants.version);
         System.out.println("[luceedebug] agent premain complete");
     }
 }

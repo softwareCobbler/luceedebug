@@ -31,30 +31,6 @@ public class LuceeTransformer implements ClassFileTransformer {
      */
     private ClassInjection[] pendingCoreLoaderClassInjections;
 
-    /**
-     * this print stuff is debug related;
-     * If you want to println at some arbitrary time very soon after initializing the transformer and registering it with the JVM,
-     * it's possible that the classes responsible for System.out.println are being loaded when _we_ say System.out.println,
-     * which results in cryptic ClassCircularityErrors and eventually assertion failures from JVM native code.
-     */
-    private boolean systemOutPrintlnLoaded = false;
-    private ArrayList<String> pendingPrintln = new ArrayList<>();
-    private void println(String s) {
-        if (!systemOutPrintlnLoaded) {
-            pendingPrintln.add(s);
-        }
-        else {
-            System.out.println(s);
-        }
-    }
-    public void makeSystemOutPrintlnSafeForUseInTransformer() {
-        System.out.print("");
-        systemOutPrintlnLoaded = true;
-        for (var s : pendingPrintln) {
-            println(s);
-        }
-    }
-
     public LuceeTransformer(
         ClassInjection[] injections,
         String jdwpHost,
@@ -78,63 +54,70 @@ public class LuceeTransformer implements ClassFileTransformer {
         ProtectionDomain protectionDomain,
         byte[] classfileBuffer
     ) throws IllegalClassFormatException {
-        var classReader = new ClassReader(classfileBuffer);
-        String superClass = classReader.getSuperName();
+        try {
+            var classReader = new ClassReader(classfileBuffer);
+            String superClass = classReader.getSuperName();
 
-        if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
-            return instrumentClosureScope(classfileBuffer);
-        }
-        else if (className.equals("lucee/runtime/ComponentImpl")) {
-            if (loader == null) {
-                throw new RuntimeException("instrumention ComponentImpl but core loader not seen yet");
+            if (className.equals("lucee/runtime/type/scope/ClosureScope")) {
+                return instrumentClosureScope(classfileBuffer);
             }
-            return instrumentComponentImpl(classfileBuffer, loader);
-        }
-        else if (className.equals("lucee/runtime/PageContextImpl")) {
-            GlobalIDebugManagerHolder.luceeCoreLoader = loader;
-
-            try {
-                Method m = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, int.class, int.class);
-                m.setAccessible(true);
-
-                for (var injection : pendingCoreLoaderClassInjections) {
-                    // warn: reflection ... when does that become unsupported?
-                    m.invoke(GlobalIDebugManagerHolder.luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
+            else if (className.equals("lucee/runtime/ComponentImpl")) {
+                if (loader == null) {
+                    throw new RuntimeException("instrumention ComponentImpl but core loader not seen yet");
                 }
-                
-                pendingCoreLoaderClassInjections = null;
+                return instrumentComponentImpl(classfileBuffer, loader);
+            }
+            else if (className.equals("lucee/runtime/PageContextImpl")) {
+                GlobalIDebugManagerHolder.luceeCoreLoader = loader;
 
                 try {
-                    final var klass = GlobalIDebugManagerHolder.luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
-                    GlobalIDebugManagerHolder.debugManager = (IDebugManager)klass.getConstructor().newInstance();
+                    Method m = ClassLoader.class.getDeclaredMethod("defineClass", String.class, byte[].class, int.class, int.class);
+                    m.setAccessible(true);
 
-                    System.out.println("[luceedebug] Loaded " + GlobalIDebugManagerHolder.debugManager + " with ClassLoader '" + GlobalIDebugManagerHolder.debugManager.getClass().getClassLoader() + "'");
-                    GlobalIDebugManagerHolder.debugManager.spawnWorker(config, jdwpHost, jdwpPort, debugHost, debugPort);
+                    for (var injection : pendingCoreLoaderClassInjections) {
+                        // warn: reflection ... when does that become unsupported?
+                        m.invoke(GlobalIDebugManagerHolder.luceeCoreLoader, injection.name, injection.bytes, 0, injection.bytes.length);
+                    }
+                    
+                    pendingCoreLoaderClassInjections = null;
+
+                    try {
+                        final var klass = GlobalIDebugManagerHolder.luceeCoreLoader.loadClass("luceedebug.coreinject.DebugManager");
+                        GlobalIDebugManagerHolder.debugManager = (IDebugManager)klass.getConstructor().newInstance();
+
+                        System.out.println("[luceedebug] Loaded " + GlobalIDebugManagerHolder.debugManager + " with ClassLoader '" + GlobalIDebugManagerHolder.debugManager.getClass().getClassLoader() + "'");
+                        GlobalIDebugManagerHolder.debugManager.spawnWorker(config, jdwpHost, jdwpPort, debugHost, debugPort);
+                    }
+                    catch (Throwable e) {
+                        e.printStackTrace();
+                        System.exit(1);
+                    }
+                    
+                    return classfileBuffer;
                 }
                 catch (Throwable e) {
                     e.printStackTrace();
                     System.exit(1);
+                    return null;
                 }
-                
+            }
+            else if (superClass.equals("lucee/runtime/ComponentPageImpl") || superClass.equals("lucee/runtime/PageImpl")) {
+                // System.out.println("[luceedebug] Instrumenting " + className);
+                if (GlobalIDebugManagerHolder.luceeCoreLoader == null) {
+                    System.out.println("Got class " + className + " before receiving PageContextImpl, debugging will fail.");
+                    System.exit(1);
+                }
+
+                return instrumentCfmOrCfc(classfileBuffer, classReader, className);
+            }
+            else {
                 return classfileBuffer;
             }
-            catch (Throwable e) {
-                e.printStackTrace();
-                System.exit(1);
-                return null;
-            }
         }
-        else if (superClass.equals("lucee/runtime/ComponentPageImpl") || superClass.equals("lucee/runtime/PageImpl")) {
-            // System.out.println("[luceedebug] Instrumenting " + className);
-            if (GlobalIDebugManagerHolder.luceeCoreLoader == null) {
-                System.out.println("Got class " + className + " before receiving PageContextImpl, debugging will fail.");
-                System.exit(1);
-            }
-
-            return instrumentCfmOrCfc(classfileBuffer, classReader, className);
-        }
-        else {
-            return classfileBuffer;
+        catch (Throwable e) {
+            e.printStackTrace();
+            System.exit(1);
+            return null;
         }
     }
 
