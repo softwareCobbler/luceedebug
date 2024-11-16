@@ -36,9 +36,9 @@ dependencies {
     // https://mvnrepository.com/artifact/com.google.guava/guava
     implementation("com.google.guava:guava:32.1.2-jre")
 
-    implementation("org.ow2.asm:asm:9.3")
-    implementation("org.ow2.asm:asm-util:9.3")
-    implementation("org.ow2.asm:asm-commons:9.3")
+    implementation("org.ow2.asm:asm:9.7.1")
+    implementation("org.ow2.asm:asm-util:9.7.1")
+    implementation("org.ow2.asm:asm-commons:9.7.1")
     
     // https://mvnrepository.com/artifact/javax.servlet.jsp/javax.servlet.jsp-api
     compileOnly("javax.servlet.jsp:javax.servlet.jsp-api:2.3.3")
