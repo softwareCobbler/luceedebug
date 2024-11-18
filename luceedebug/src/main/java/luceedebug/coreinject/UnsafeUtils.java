@@ -2,7 +2,7 @@ package luceedebug.coreinject;
 
 import lucee.runtime.exp.PageException;
 
-class UnsafeUtils {
+public class UnsafeUtils {
     @SuppressWarnings("unchecked")
     static <T> T uncheckedCast(Object e) {
         return (T)e;

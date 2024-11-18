@@ -15,8 +15,9 @@ import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
+import luceedebug.coreinject.frame.DebugFrame;
 
-class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
+public class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // Pin some ephemeral evaluated things so they don't get GC'd immediately.
     // It would be better to pin them to a "session" or something with a meaningful lifetime,
     // rather than hope they live long enough in this cache to be useful.
@@ -27,7 +28,7 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
         .maximumSize(50)
         .expireAfterWrite(10, TimeUnit.MINUTES)
         .build();
-    static void pin(Object obj) {
+    public static void pin(Object obj) {
         pinnedObjects.put(System.identityHashCode(obj), obj);
     }
 
@@ -45,10 +46,10 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
         return id;
     }
 
-    static class MarkerTrait {
-        static class Scope {
+    public static class MarkerTrait {
+        public static class Scope {
             public final Map<?,?> scopelike;
-            Scope(Map<?,?> scopelike) {
+            public Scope(Map<?,?> scopelike) {
                 this.scopelike = scopelike;
             }
         }

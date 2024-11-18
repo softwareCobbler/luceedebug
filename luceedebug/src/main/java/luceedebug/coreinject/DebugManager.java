@@ -32,6 +32,7 @@ import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
 import luceedebug.IDebugFrame;
 import luceedebug.IDebugManager;
+import luceedebug.coreinject.frame.DebugFrame;
 
 public class DebugManager implements IDebugManager {
 
@@ -662,10 +663,10 @@ public class DebugManager implements IDebugManager {
     }
 
     public void pushCfFrame(PageContext pageContext, String sourceFilePath) {
-        pushCfFrame_worker(pageContext, sourceFilePath);
+        maybe_pushCfFrame_worker(pageContext, sourceFilePath);
     }
     
-    private DebugFrame pushCfFrame_worker(PageContext pageContext, String sourceFilePath) {
+    private DebugFrame maybe_pushCfFrame_worker(PageContext pageContext, String sourceFilePath) {
         Thread currentThread = Thread.currentThread();
 
         ArrayList<DebugFrame> stack = cfStackByThread.get(currentThread);
@@ -681,7 +682,12 @@ public class DebugManager implements IDebugManager {
         }
 
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
-        final DebugFrame frame = new DebugFrame(sourceFilePath, depth, valTracker, pageContext);
+        
+        final DebugFrame frame = DebugFrame.maybeMakeFrame(sourceFilePath, depth, valTracker, pageContext);
+
+        if (frame == null) {
+            return null;
+        }
 
         stack.add(frame);
 
@@ -696,7 +702,11 @@ public class DebugManager implements IDebugManager {
     }
 
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath) {
-        DebugFrame frame = pushCfFrame_worker(pageContext, sourceFilePath);
+        DebugFrame frame = maybe_pushCfFrame_worker(pageContext, sourceFilePath);
+        if (frame == null) {
+            return;
+        }
+
         frame.isUdfDefaultValueInitFrame = true;
     }
 

@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandles;
 
 import lucee.runtime.PageContext;
 import luceedebug.Either;
+import luceedebug.coreinject.frame.DebugFrame;
 
 import static luceedebug.coreinject.Utils.terminate;
 
