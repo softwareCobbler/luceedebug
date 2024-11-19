@@ -15,7 +15,7 @@ import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
-import luceedebug.coreinject.frame.DebugFrame;
+import luceedebug.coreinject.frame.Frame;
 
 public class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // Pin some ephemeral evaluated things so they don't get GC'd immediately.
@@ -32,11 +32,11 @@ public class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
         pinnedObjects.put(System.identityHashCode(obj), obj);
     }
 
-    private final DebugFrame frame;
+    private final Frame frame;
     public final Object obj;
     public final long id;
 
-    public CfValueDebuggerBridge(DebugFrame frame, Object obj) {
+    public CfValueDebuggerBridge(Frame frame, Object obj) {
         this.frame = Objects.requireNonNull(frame);
         this.obj = Objects.requireNonNull(obj);
         this.id = frame.valTracker.idempotentRegisterObject(obj).id;
@@ -58,7 +58,7 @@ public class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     /**
      * @maybeNull_which --> null means "any type"
      */
-    public static IDebugEntity[] getAsDebugEntity(DebugFrame frame, Object obj, IDebugEntity.DebugEntityType maybeNull_which) {
+    public static IDebugEntity[] getAsDebugEntity(Frame frame, Object obj, IDebugEntity.DebugEntityType maybeNull_which) {
         return getAsDebugEntity(frame.valTracker, obj, maybeNull_which);
     }
 

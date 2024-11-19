@@ -155,7 +155,6 @@ public class Agent {
             result.put("luceedebug.coreinject.DebugManager$1", 0);
             result.put("luceedebug.coreinject.ClosureScopeLocalScopeAccessorShim", 0);
             result.put("luceedebug.coreinject.ComponentScopeMarkerTraitShim", 0);
-            result.put("luceedebug.coreinject.DebugFrame$FrameContext", 0);
             result.put("luceedebug.coreinject.LuceeVm$SteppingState", 0);
             result.put("luceedebug.coreinject.LuceeVm$KlassMap", 0);
             result.put("luceedebug.coreinject.LuceeVm$JdwpWorker", 0);
@@ -165,14 +164,12 @@ public class Agent {
             result.put("luceedebug.coreinject.CfValueDebuggerBridge$MarkerTrait", 0);
             result.put("luceedebug.coreinject.ValTracker", 0);
             result.put("luceedebug.coreinject.UnsafeUtils", 0);
-            result.put("luceedebug.coreinject.DebugFrame", 0);
             result.put("luceedebug.coreinject.CfValueDebuggerBridge$MarkerTrait$Scope", 0);
             result.put("luceedebug.coreinject.DebugManager$PageContextAndOutputStream", 0);
             result.put("luceedebug.coreinject.LuceeVm$ThreadMap", 0);
             result.put("luceedebug.coreinject.DebugManager", 0);
             result.put("luceedebug.coreinject.LuceeVm$JdwpStaticCallable", 0);
             result.put("luceedebug.coreinject.CfValueDebuggerBridge", 0);
-            result.put("luceedebug.coreinject.DebugFrame$FrameContext$SupplierOrNull", 0);
             result.put("luceedebug.coreinject.LuceeVm", 0);
             result.put("luceedebug.coreinject.ValTracker$CleanerRunner", 0);
             result.put("luceedebug.coreinject.ExprEvaluator", 0);
@@ -180,6 +177,12 @@ public class Agent {
             result.put("luceedebug.coreinject.ExprEvaluator$Evaluator", 0);
             result.put("luceedebug.coreinject.ExprEvaluator$Lucee6Evaluator", 1);
             result.put("luceedebug.coreinject.ExprEvaluator$Lucee5Evaluator", 1);
+
+            result.put("luceedebug.coreinject.frame.DebugFrame", 0);
+            result.put("luceedebug.coreinject.frame.Frame", 1);
+            result.put("luceedebug.coreinject.frame.Frame$FrameContext", 1);
+            result.put("luceedebug.coreinject.frame.Frame$FrameContext$SupplierOrNull", 1);
+            result.put("luceedebug.coreinject.frame.DummyFrame", 1);
     
             return result;
         }

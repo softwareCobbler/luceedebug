@@ -33,6 +33,7 @@ import luceedebug.IDebugEntity;
 import luceedebug.IDebugFrame;
 import luceedebug.IDebugManager;
 import luceedebug.coreinject.frame.DebugFrame;
+import luceedebug.coreinject.frame.Frame;
 
 public class DebugManager implements IDebugManager {
 
@@ -328,36 +329,37 @@ public class DebugManager implements IDebugManager {
     }
 
     public Either</*err*/String, /*ok*/Either<ICfValueDebuggerBridge, String>> evaluate(Long frameID, String expr) {
-        final var frame = frameByFrameID.get(frameID);
-        if (frame != null) {
-            return doEvaluate(frame, expr)
-                .bimap(
-                    err -> err,
-                    ok -> {
-                        // what about bool, Long, etc. ?...
-                        if (ok == null) {
-                            return Either.Right("null");
-                        }
-                        else if (ok instanceof String) {
-                            return Either.Right("\"" + ((String)ok).replaceAll("\"", "\\\"") + "\"");
-                        }
-                        else if (ok instanceof Number || ok instanceof Boolean) {
-                            return Either.Right(ok.toString());
-                        }
-                        else {
-                            return Either.Left(frame.trackEvalResult(ok));
-                        }
-                    }
-                );
-        }
-        else {
+        final var zzzframe = frameByFrameID.get(frameID);
+        if (!(zzzframe instanceof Frame)) {
             return Either.Left("<<no such frame>>");
         }
+
+        Frame frame = (Frame)zzzframe;
+
+        return doEvaluate(frame, expr)
+            .bimap(
+                err -> err,
+                ok -> {
+                    // what about bool, Long, etc. ?...
+                    if (ok == null) {
+                        return Either.Right("null");
+                    }
+                    else if (ok instanceof String) {
+                        return Either.Right("\"" + ((String)ok).replaceAll("\"", "\\\"") + "\"");
+                    }
+                    else if (ok instanceof Number || ok instanceof Boolean) {
+                        return Either.Right(ok.toString());
+                    }
+                    else {
+                        return Either.Left(frame.trackEvalResult(ok));
+                    }
+                }
+            );
     }
 
     // concurrency here needs to be at the level of the DAP server?
     // does the DAP server do multiple concurrent requests ... ? ... it's all one socket so probably not ? ... well many inbound messages can be being serviced ...
-    private Either</*err*/String, /*ok*/Object> doEvaluate(DebugFrame frame, String expr) {
+    private Either</*err*/String, /*ok*/Object> doEvaluate(Frame frame, String expr) {
         try {
             return CompletableFuture
                 .supplyAsync(
@@ -392,10 +394,18 @@ public class DebugManager implements IDebugManager {
         if (stack.isEmpty()) {
             return false;
         }
-        return doEvaluateAsBoolean(stack.get(stack.size() - 1), expr);
+        
+        DebugFrame frame = stack.get(stack.size() - 1);
+        
+        if (frame instanceof Frame) {
+            return doEvaluateAsBoolean((Frame)frame, expr);
+        }
+        else {
+            return false;
+        }
     }
 
-    private boolean doEvaluateAsBoolean(DebugFrame frame, String expr) {
+    private boolean doEvaluateAsBoolean(Frame frame, String expr) {
         try {
             return CompletableFuture
                 .supplyAsync(
@@ -482,7 +492,7 @@ public class DebugManager implements IDebugManager {
         if (stack == null) {
             System.out.println("getCfStack called, frames was null, frames is " + cfStackByThread + ", passed thread was " + thread);
             System.out.println("                   thread=" + thread + " this=" + this);
-            return new DebugFrame[0];
+            return new Frame[0];
         }
 
         ArrayList<DebugFrame> result = new ArrayList<>();
@@ -501,7 +511,7 @@ public class DebugManager implements IDebugManager {
             }
         }
 
-        return result.toArray(new DebugFrame[result.size()]);
+        return result.toArray(new Frame[result.size()]);
     }
 
     static class CfStepRequest {
@@ -570,9 +580,12 @@ public class DebugManager implements IDebugManager {
         if (request == null) {
             return;
         }
-        else {
+        else if (frame instanceof Frame) {
             request.__debug__steps++;
-            maybeNotifyOfStepCompletion(currentThread, frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
+            maybeNotifyOfStepCompletion(currentThread, (Frame) frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
+        }
+        else {
+            // no-op
         }
     }
 
@@ -596,13 +609,16 @@ public class DebugManager implements IDebugManager {
         if (request == null) {
             return;
         }
-        else {
+        else if (frame instanceof Frame) {
             request.__debug__steps++;
-            maybeNotifyOfStepCompletion(currentThread, frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
+            maybeNotifyOfStepCompletion(currentThread, (Frame)frame, request, minDistanceToLuceedebugStepNotificationEntryFrame + 1, System.nanoTime());
+        }
+        else {
+            // no-op
         }
     }
 
-    private void maybeNotifyOfStepCompletion(Thread currentThread, DebugFrame frame, CfStepRequest request, int minDistanceToLuceedebugStepNotificationEntryFrame, long start) {
+    private void maybeNotifyOfStepCompletion(Thread currentThread, Frame frame, CfStepRequest request, int minDistanceToLuceedebugStepNotificationEntryFrame, long start) {
         if (frame.isUdfDefaultValueInitFrame && !config_.getStepIntoUdfDefaultValueInitFrames()) {
             return;
         }
@@ -683,11 +699,7 @@ public class DebugManager implements IDebugManager {
 
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
         
-        final DebugFrame frame = DebugFrame.maybeMakeFrame(sourceFilePath, depth, valTracker, pageContext);
-
-        if (frame == null) {
-            return null;
-        }
+        final DebugFrame frame = DebugFrame.makeFrame(sourceFilePath, depth, valTracker, pageContext);
 
         stack.add(frame);
 
@@ -703,11 +715,9 @@ public class DebugManager implements IDebugManager {
 
     public void pushCfFunctionDefaultValueInitializationFrame(lucee.runtime.PageContext pageContext, String sourceFilePath) {
         DebugFrame frame = maybe_pushCfFrame_worker(pageContext, sourceFilePath);
-        if (frame == null) {
-            return;
+        if (frame instanceof Frame) {
+            ((Frame)frame).isUdfDefaultValueInitFrame = true;
         }
-
-        frame.isUdfDefaultValueInitFrame = true;
     }
 
     public void popCfFrame() {
