@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandles;
 
 import lucee.runtime.PageContext;
 import luceedebug.Either;
+import luceedebug.coreinject.frame.Frame;
 
 import static luceedebug.coreinject.Utils.terminate;
 
@@ -26,7 +27,7 @@ class ExprEvaluator {
         }
     }
 
-    public static Either</*err*/String, /*ok*/Object> eval(DebugFrame frame, String expr) {
+    public static Either</*err*/String, /*ok*/Object> eval(Frame frame, String expr) {
         return lucee5
             .map(v -> v.eval(frame, expr))
             .or(() -> lucee6.map(v -> v.eval(frame, expr)))
@@ -51,9 +52,9 @@ class ExprEvaluator {
                 + "</cfscript>";
         }
 
-        protected abstract void evalIntoVariablesScope(DebugFrame frame, String expr) throws Throwable;
+        protected abstract void evalIntoVariablesScope(Frame frame, String expr) throws Throwable;
 
-        public Either</*err*/String, /*ok*/Object> eval(DebugFrame frame, String expr) {
+        public Either</*err*/String, /*ok*/Object> eval(Frame frame, String expr) {
             try {
                 evalIntoVariablesScope(frame, expr);
                 var obj = consumeResult(frame);
@@ -67,7 +68,7 @@ class ExprEvaluator {
         /**
          * get the eval'd result out of the frame's variables scope and then delete it from the variables scope.
          */
-        private Object consumeResult(DebugFrame frame) throws Throwable {
+        private Object consumeResult(Frame frame) throws Throwable {
             Object evalResult = UnsafeUtils.deprecatedScopeGet(frame.getFrameContext().variables, resultName);
             frame.getFrameContext().variables.remove(resultName);
             return evalResult;
@@ -107,7 +108,7 @@ class ExprEvaluator {
             this.methodHandle = methodHandle;
         }
 
-        protected void evalIntoVariablesScope(DebugFrame frame, String expr) throws Throwable {
+        protected void evalIntoVariablesScope(Frame frame, String expr) throws Throwable {
             methodHandle.invoke(
                 /*PageContext pc*/ frame.getFrameContext().pageContext,
                 /*String cfml*/ Evaluator.getEvaluatableSourceText(expr),
@@ -147,7 +148,7 @@ class ExprEvaluator {
             this.methodHandle = methodHandle;
         }
 
-        protected void evalIntoVariablesScope(DebugFrame frame, String expr) throws Throwable {
+        protected void evalIntoVariablesScope(Frame frame, String expr) throws Throwable {
             methodHandle.invoke(
                 /*PageContext pc*/ frame.getFrameContext().pageContext,
                 /*String cfml*/ Evaluator.getEvaluatableSourceText(expr),

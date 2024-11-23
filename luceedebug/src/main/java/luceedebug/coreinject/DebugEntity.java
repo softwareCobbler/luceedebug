@@ -3,12 +3,12 @@ package luceedebug.coreinject;
 import luceedebug.*;
 
 public class DebugEntity implements IDebugEntity {
-    String name;
-    String value;
-    int namedVariables;
-    int indexedVariables;
-    boolean expensive;
-    long variablesReference;
+    public String name;
+    public String value;
+    public int namedVariables;
+    public int indexedVariables;
+    public boolean expensive;
+    public long variablesReference;
 
     public String getName() { return name; }
     public String getValue() { return value; }

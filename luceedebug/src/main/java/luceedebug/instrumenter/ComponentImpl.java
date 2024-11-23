@@ -29,7 +29,7 @@ public class ComponentImpl extends ClassVisitor {
     @Override
     public void visitEnd() {
         final var fieldName = "__luceedebug__pinned_componentScopeMarkerTrait";
-        visitField(org.objectweb.asm.Opcodes.ACC_PUBLIC, fieldName, "Ljava/lang/Object;", null, null);
+        visitField(org.objectweb.asm.Opcodes.ACC_PUBLIC | org.objectweb.asm.Opcodes.ACC_TRANSIENT, fieldName, "Ljava/lang/Object;", null, null);
 
         final var name = "__luceedebug__pinComponentScopeMarkerTrait";
         final var descriptor = "(Ljava/lang/Object;)V";

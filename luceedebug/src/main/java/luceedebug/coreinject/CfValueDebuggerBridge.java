@@ -15,8 +15,9 @@ import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 import luceedebug.ICfValueDebuggerBridge;
 import luceedebug.IDebugEntity;
+import luceedebug.coreinject.frame.Frame;
 
-class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
+public class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     // Pin some ephemeral evaluated things so they don't get GC'd immediately.
     // It would be better to pin them to a "session" or something with a meaningful lifetime,
     // rather than hope they live long enough in this cache to be useful.
@@ -27,15 +28,15 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
         .maximumSize(50)
         .expireAfterWrite(10, TimeUnit.MINUTES)
         .build();
-    static void pin(Object obj) {
+    public static void pin(Object obj) {
         pinnedObjects.put(System.identityHashCode(obj), obj);
     }
 
-    private final DebugFrame frame;
+    private final Frame frame;
     public final Object obj;
     public final long id;
 
-    public CfValueDebuggerBridge(DebugFrame frame, Object obj) {
+    public CfValueDebuggerBridge(Frame frame, Object obj) {
         this.frame = Objects.requireNonNull(frame);
         this.obj = Objects.requireNonNull(obj);
         this.id = frame.valTracker.idempotentRegisterObject(obj).id;
@@ -45,10 +46,10 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
         return id;
     }
 
-    static class MarkerTrait {
-        static class Scope {
+    public static class MarkerTrait {
+        public static class Scope {
             public final Map<?,?> scopelike;
-            Scope(Map<?,?> scopelike) {
+            public Scope(Map<?,?> scopelike) {
                 this.scopelike = scopelike;
             }
         }
@@ -57,7 +58,7 @@ class CfValueDebuggerBridge implements ICfValueDebuggerBridge {
     /**
      * @maybeNull_which --> null means "any type"
      */
-    public static IDebugEntity[] getAsDebugEntity(DebugFrame frame, Object obj, IDebugEntity.DebugEntityType maybeNull_which) {
+    public static IDebugEntity[] getAsDebugEntity(Frame frame, Object obj, IDebugEntity.DebugEntityType maybeNull_which) {
         return getAsDebugEntity(frame.valTracker, obj, maybeNull_which);
     }
 

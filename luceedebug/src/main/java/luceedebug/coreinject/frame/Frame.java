@@ -1,4 +1,4 @@
-package luceedebug.coreinject;
+package luceedebug.coreinject.frame;
 
 import lucee.runtime.PageContext;
 import lucee.runtime.PageContextImpl;
@@ -18,9 +18,14 @@ import java.util.function.Supplier;
 import com.google.common.collect.MapMaker;
 
 import luceedebug.*;
+import luceedebug.coreinject.CfValueDebuggerBridge;
+import luceedebug.coreinject.ClosureScopeLocalScopeAccessorShim;
+import luceedebug.coreinject.DebugEntity;
+import luceedebug.coreinject.UnsafeUtils;
+import luceedebug.coreinject.ValTracker;
 import luceedebug.coreinject.CfValueDebuggerBridge.MarkerTrait;
 
-public class DebugFrame implements IDebugFrame {
+public class Frame extends DebugFrame {
     static private AtomicLong nextId = new AtomicLong(0);
 
     /**
@@ -76,21 +81,21 @@ public class DebugFrame implements IDebugFrame {
     // the engine is truly do with its "frame". Fallback here would be use a WeakRef<> but it doesn't
     // seem necessary.
     //
-    static class FrameContext {
-        final PageContext pageContext;
+    public static class FrameContext {
+        final public PageContext pageContext;
 
-        final lucee.runtime.type.scope.Scope application;
-        final lucee.runtime.type.scope.Argument arguments;
-        final lucee.runtime.type.scope.Scope form;
-        final lucee.runtime.type.scope.Local local;
-        final lucee.runtime.type.scope.Scope request;
-        final lucee.runtime.type.scope.Scope session;
-        final lucee.runtime.type.scope.Scope server;
-        final lucee.runtime.type.scope.Scope url;
-        final lucee.runtime.type.scope.Variables variables;
+        public final lucee.runtime.type.scope.Scope application;
+        public final lucee.runtime.type.scope.Argument arguments;
+        public final lucee.runtime.type.scope.Scope form;
+        public final lucee.runtime.type.scope.Local local;
+        public final lucee.runtime.type.scope.Scope request;
+        public final lucee.runtime.type.scope.Scope session;
+        public final lucee.runtime.type.scope.Scope server;
+        public final lucee.runtime.type.scope.Scope url;
+        public final lucee.runtime.type.scope.Variables variables;
         // n.b. the `this` scope does not derive from Scope
-        final lucee.runtime.type.Struct this_;
-        final lucee.runtime.type.scope.Scope static_;
+        public final lucee.runtime.type.Struct this_;
+        public final lucee.runtime.type.scope.Scope static_;
         
         // lazy init because it (might?) be expensive to walk scope chains eagerly every frame
         private ArrayList<lucee.runtime.type.scope.ClosureScope> capturedScopeChain = null;
@@ -104,16 +109,16 @@ public class DebugFrame implements IDebugFrame {
         // expensive exceptions on literally every frame, e.g. if a scope is disabled by the engine and trying to touch it
         // throws an ExpressionException.
         //
-        FrameContext(PageContext pageContext) {
+        private FrameContext(PageContext pageContext, FrameContext root) {
             this.pageContext = pageContext;
-            this.application = getScopelikeOrNull(() -> pageContext.applicationScope());
+            this.application = root != null ? root.application : getScopelikeOrNull(() -> pageContext.applicationScope());
             this.arguments   = getScopelikeOrNull(() -> pageContext.argumentsScope());
-            this.form        = getScopelikeOrNull(() -> pageContext.formScope());
+            this.form        = root != null ? root.form : getScopelikeOrNull(() -> pageContext.formScope());
             this.local       = getScopelikeOrNull(() -> pageContext.localScope());
-            this.request     = getScopelikeOrNull(() -> pageContext.requestScope());
-            this.session     = getScopelikeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
-            this.server      = getScopelikeOrNull(() -> pageContext.serverScope());
-            this.url         = getScopelikeOrNull(() -> pageContext.urlScope());
+            this.request     = root != null ? root.request : getScopelikeOrNull(() -> pageContext.requestScope());
+            this.session     = root != null ? root.session : getScopelikeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
+            this.server      = root != null ? root.server : getScopelikeOrNull(() -> pageContext.serverScope());
+            this.url         = root != null ? root.url : getScopelikeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopelikeOrNull(() -> pageContext.variablesScope());
             this.this_       = getScopelikeOrNull(() -> {
                 // there is also `PageContextImpl.thisGet()` but it can create a `this` property on the variables scope, which seems like
@@ -217,12 +222,12 @@ public class DebugFrame implements IDebugFrame {
         }
     }
 
-    public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext) {
-        this(sourceFilePath, depth, valTracker, pageContext, DebugFrame.tryGetFrameName(pageContext));
+    Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, FrameContext root) {
+        this(sourceFilePath, depth, valTracker, pageContext, Frame.tryGetFrameName(pageContext), root);
     }
 
-    public DebugFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, String name) {
-        this.frameContext_ = new FrameContext(pageContext);
+    private Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, String name, FrameContext root) {
+        this.frameContext_ = new FrameContext(pageContext, root);
         this.sourceFilePath = Objects.requireNonNull(sourceFilePath);
         this.valTracker = Objects.requireNonNull(valTracker);
         this.id = nextId.incrementAndGet();
@@ -321,7 +326,7 @@ public class DebugFrame implements IDebugFrame {
         return result;
     }
 
-    CfValueDebuggerBridge trackEvalResult(Object obj) {
+    public CfValueDebuggerBridge trackEvalResult(Object obj) {
         var v = new CfValueDebuggerBridge(this, obj);
         CfValueDebuggerBridge.pin(obj);
         return v;
