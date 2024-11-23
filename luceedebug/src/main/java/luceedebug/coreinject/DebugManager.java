@@ -34,6 +34,7 @@ import luceedebug.IDebugFrame;
 import luceedebug.IDebugManager;
 import luceedebug.coreinject.frame.DebugFrame;
 import luceedebug.coreinject.frame.Frame;
+import luceedebug.coreinject.frame.Frame.FrameContext;
 
 public class DebugManager implements IDebugManager {
 
@@ -699,7 +700,17 @@ public class DebugManager implements IDebugManager {
 
         final int depth = stack.size(); // first frame is frame 0, and prior to pushing the first frame the stack is length 0; next frame is frame 1, and prior to pushing it the stack is of length 1, ...
         
-        final DebugFrame frame = DebugFrame.makeFrame(sourceFilePath, depth, valTracker, pageContext);
+        FrameContext maybeBaseFrame = stack.size() == 0
+            ? null
+            : stack.get(0) instanceof Frame ? ((Frame)stack.get(0)).getFrameContext() : null;
+
+        final DebugFrame frame = DebugFrame.makeFrame(
+            sourceFilePath,
+            depth,
+            valTracker,
+            pageContext,
+            maybeBaseFrame
+        );
 
         stack.add(frame);
 

@@ -3,6 +3,7 @@ package luceedebug.coreinject.frame;
 import lucee.runtime.PageContext;
 import luceedebug.IDebugFrame;
 import luceedebug.coreinject.ValTracker;
+import luceedebug.coreinject.frame.Frame.FrameContext;
 
 /**
  * Should be a sealed class, subtypes are:
@@ -19,14 +20,14 @@ public abstract class DebugFrame implements IDebugFrame {
     // and if so, we just return some dummy frame which is guranteed to NOT schedule more work.
     static private ThreadLocal<Boolean> isPushingFrame = ThreadLocal.withInitial(() -> false);
     
-    static public DebugFrame makeFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext) {
+    static public DebugFrame makeFrame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, FrameContext root) {
         if (isPushingFrame.get()) {
             return DummyFrame.get();
         }
         else {
             try {
                 isPushingFrame.set(true);
-                return new Frame(sourceFilePath, depth, valTracker, pageContext);
+                return new Frame(sourceFilePath, depth, valTracker, pageContext, root);
             }
             finally {
                 isPushingFrame.set(false);

@@ -109,16 +109,16 @@ public class Frame extends DebugFrame {
         // expensive exceptions on literally every frame, e.g. if a scope is disabled by the engine and trying to touch it
         // throws an ExpressionException.
         //
-        private FrameContext(PageContext pageContext) {
+        private FrameContext(PageContext pageContext, FrameContext root) {
             this.pageContext = pageContext;
-            this.application = getScopelikeOrNull(() -> pageContext.applicationScope());
+            this.application = root != null ? root.application : getScopelikeOrNull(() -> pageContext.applicationScope());
             this.arguments   = getScopelikeOrNull(() -> pageContext.argumentsScope());
-            this.form        = getScopelikeOrNull(() -> pageContext.formScope());
+            this.form        = root != null ? root.form : getScopelikeOrNull(() -> pageContext.formScope());
             this.local       = getScopelikeOrNull(() -> pageContext.localScope());
-            this.request     = getScopelikeOrNull(() -> pageContext.requestScope());
-            this.session     = getScopelikeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
-            this.server      = getScopelikeOrNull(() -> pageContext.serverScope());
-            this.url         = getScopelikeOrNull(() -> pageContext.urlScope());
+            this.request     = root != null ? root.request : getScopelikeOrNull(() -> pageContext.requestScope());
+            this.session     = root != null ? root.session : getScopelikeOrNull(() -> pageContext.getApplicationContext().isSetSessionManagement() ? pageContext.sessionScope() : null);
+            this.server      = root != null ? root.server : getScopelikeOrNull(() -> pageContext.serverScope());
+            this.url         = root != null ? root.url : getScopelikeOrNull(() -> pageContext.urlScope());
             this.variables   = getScopelikeOrNull(() -> pageContext.variablesScope());
             this.this_       = getScopelikeOrNull(() -> {
                 // there is also `PageContextImpl.thisGet()` but it can create a `this` property on the variables scope, which seems like
@@ -222,12 +222,12 @@ public class Frame extends DebugFrame {
         }
     }
 
-    Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext) {
-        this(sourceFilePath, depth, valTracker, pageContext, Frame.tryGetFrameName(pageContext));
+    Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, FrameContext root) {
+        this(sourceFilePath, depth, valTracker, pageContext, Frame.tryGetFrameName(pageContext), root);
     }
 
-    private Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, String name) {
-        this.frameContext_ = new FrameContext(pageContext);
+    private Frame(String sourceFilePath, int depth, ValTracker valTracker, PageContext pageContext, String name, FrameContext root) {
+        this.frameContext_ = new FrameContext(pageContext, root);
         this.sourceFilePath = Objects.requireNonNull(sourceFilePath);
         this.valTracker = Objects.requireNonNull(valTracker);
         this.id = nextId.incrementAndGet();
