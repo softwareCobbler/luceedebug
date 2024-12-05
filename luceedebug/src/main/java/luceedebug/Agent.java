@@ -173,6 +173,9 @@ public class Agent {
             result.put("luceedebug.coreinject.LuceeVm", 0);
             result.put("luceedebug.coreinject.ValTracker$CleanerRunner", 0);
             result.put("luceedebug.coreinject.ExprEvaluator", 0);
+            
+            result.put("luceedebug.coreinject.Iife", 0);
+            result.put("luceedebug.coreinject.Iife$Supplier2", 0);
 
             result.put("luceedebug.coreinject.ExprEvaluator$Evaluator", 0);
             result.put("luceedebug.coreinject.ExprEvaluator$Lucee6Evaluator", 1);

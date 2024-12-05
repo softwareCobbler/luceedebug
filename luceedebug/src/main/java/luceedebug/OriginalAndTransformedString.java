@@ -7,4 +7,13 @@ public class OriginalAndTransformedString {
         this.original = original;
         this.transformed = transformed;
     }
+
+    @Override
+    public boolean equals(Object v) {
+        if (v instanceof OriginalAndTransformedString) {
+            var other = (OriginalAndTransformedString)v;
+            return other.original.equals(original) && other.transformed.equals(transformed);
+        }
+        return false;
+    }
 }

@@ -390,8 +390,8 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (var cfBreakpoint : luceeVm_.bindBreakpoints(path, lines, exprs)) {
-            result.add(map_cfBreakpoint_to_lsp4jBreakpoint(cfBreakpoint));
+        for (IBreakpoint bp : luceeVm_.bindBreakpoints(path, lines, exprs)) {
+            result.add(map_cfBreakpoint_to_lsp4jBreakpoint(bp));
         }
         
         var response = new SetBreakpointsResponse();
