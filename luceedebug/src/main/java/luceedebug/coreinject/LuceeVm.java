@@ -5,7 +5,6 @@ import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -720,66 +719,6 @@ public class LuceeVm implements ILuceeVm {
         return GlobalIDebugManagerHolder.debugManager.getVariables(ID, IDebugEntity.DebugEntityType.INDEXED);
     }
 
-    static private class KlassMap {
-        /**
-         * original -> original
-         * 
-         * transformed -> canonicalized as per fs config
-         */
-        final public OriginalAndTransformedString sourceName; 
-        final public HashMap<Integer, Location> lineMap;
-        private final ClassObjectReference objRef;
-        
-        @SuppressWarnings("unused")
-        final public ReferenceType refType;
-
-        private KlassMap(Config config, ReferenceType refType) throws AbsentInformationException {
-            objRef = refType.classObject();
-
-            String sourceName = refType.sourceName();
-            var lineMap = new HashMap<Integer, Location>();
-            
-            for (var loc : refType.allLineLocations()) {
-                lineMap.put(loc.lineNumber(), loc);
-            }
-
-            this.sourceName = new OriginalAndTransformedString(
-                sourceName,
-                Config.canonicalizeFileName(sourceName)
-            );
-            this.lineMap = lineMap;
-            this.refType = refType;
-        }
-
-        /**
-         * May return null if ReferenceType throws an AbsentInformationException, which the caller
-         * should interpret as "we can't do anything meaningful with this file"
-         */
-        static KlassMap maybeNull_tryBuildKlassMap(Config config, ReferenceType refType) {
-            try {
-                return new KlassMap(config, refType);
-            }
-            catch (AbsentInformationException e) {
-                return null;
-            }
-            catch (Throwable e) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-
-            // unreachable
-            return null;
-        }
-
-        @Override
-        public boolean equals(Object e) {
-            if (e instanceof KlassMap) {
-                return ((KlassMap)e).sourceName.equals(this.sourceName);
-            }
-            return false;
-        }
-    }
-
     private AtomicInteger breakpointID = new AtomicInteger();
     private int nextBreakpointID() {
         return breakpointID.incrementAndGet();
@@ -875,7 +814,7 @@ public class LuceeVm implements ILuceeVm {
         List<KlassMap> garbageCollectedKlassMaps = new ArrayList<>();
 
         for (KlassMap mapping : klassMapSet) {
-            if (mapping.objRef.isCollected()) {
+            if (mapping.isCollected()) {
                 // This still leaves us with a little race where it gets collected after this,
                 // but before we start adding breakpoints to the gc'd class.
                 garbageCollectedKlassMaps.add(mapping);
