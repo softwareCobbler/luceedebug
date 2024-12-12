@@ -728,11 +728,14 @@ public class LuceeVm implements ILuceeVm {
          */
         final public OriginalAndTransformedString sourceName; 
         final public HashMap<Integer, Location> lineMap;
+        private final ClassObjectReference objRef;
         
         @SuppressWarnings("unused")
         final public ReferenceType refType;
 
         private KlassMap(Config config, ReferenceType refType) throws AbsentInformationException {
+            objRef = refType.classObject();
+
             String sourceName = refType.sourceName();
             var lineMap = new HashMap<Integer, Location>();
             
@@ -869,9 +872,33 @@ public class LuceeVm implements ILuceeVm {
 
         clearExistingBreakpoints(serverAbsPath);
 
+        List<KlassMap> garbageCollectedKlassMaps = new ArrayList<>();
+
         for (KlassMap mapping : klassMapSet) {
-            bpListPerMapping = __internal__idempotentBindBreakpoints(mapping, lineInfo);
+            if (mapping.objRef.isCollected()) {
+                // This still leaves us with a little race where it gets collected after this,
+                // but before we start adding breakpoints to the gc'd class.
+                garbageCollectedKlassMaps.add(mapping);
+                continue;
+            }
+
+            try {
+                bpListPerMapping = __internal__idempotentBindBreakpoints(mapping, lineInfo);
+            }
+            catch (ObjectCollectedException e) {
+                garbageCollectedKlassMaps.add(mapping);
+            }
         }
+
+        garbageCollectedKlassMaps.forEach(klassMap -> {
+            Set<ReplayableCfBreakpointRequest> z = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName.transformed);
+            if (z != null) {
+                // TODO: stronger types WRT "transformed" and "non-transformed" paths, they shouldn't both be String they should be some distinct wrapper type
+                z.removeIf(bpReq -> bpReq.serverAbsPath.equals(klassMap.sourceName.transformed));
+            }
+
+            klassMapSet.remove(klassMap);
+        });
 
         // return just the last one
         return bpListPerMapping;
