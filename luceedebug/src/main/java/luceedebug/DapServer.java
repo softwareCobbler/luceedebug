@@ -77,12 +77,12 @@ public class DapServer implements IDebugProtocolServer {
             clientProxy_.stopped(event);
         });
 
-        this.luceeVm_.registerBreakpointEventCallback((jdwpThreadID, i32_bpID) -> {
+        this.luceeVm_.registerBreakpointEventCallback((jdwpThreadID, bpID) -> {
             final int i32_threadID = (int)(long)jdwpThreadID.v;
             var event = new StoppedEventArguments();
             event.setReason("breakpoint");
             event.setThreadId(i32_threadID);
-            event.setHitBreakpointIds(new Integer[] { i32_bpID });
+            event.setHitBreakpointIds(new Integer[] { bpID.v });
             clientProxy_.stopped(event);
         });
 

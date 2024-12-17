@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import static luceedebug.coreinject.Iife.iife;
 
 import luceedebug.*;
+import luceedebug.StrongInt.DapBreakpointID;
 import luceedebug.StrongLong.JdwpThreadID;
 import luceedebug.StrongString.CanonicalServerAbsPath;
 import luceedebug.StrongString.RawIdePath;
@@ -116,7 +117,7 @@ public class LuceeVm implements ILuceeVm {
         final RawIdePath ideAbsPath;
         final CanonicalServerAbsPath serverAbsPath;
         final int line;
-        final int id;
+        final DapBreakpointID id;
         /**
          * expression for conditional breakpoints
          * can be null for "not a conditional breakpoint"
@@ -144,7 +145,7 @@ public class LuceeVm implements ILuceeVm {
                 && expr.equals(v.expr);
         }
         
-        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -153,7 +154,7 @@ public class LuceeVm implements ILuceeVm {
             this.maybeNull_jdwpBreakpointRequest = null;
         }
 
-        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr, BreakpointRequest jdwpBreakpointRequest) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr, BreakpointRequest jdwpBreakpointRequest) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -471,14 +472,14 @@ public class LuceeVm implements ILuceeVm {
     private static enum SteppingState { stepping, finalizingViaAwaitedBreakpoint }
     private ConcurrentMap<JdwpThreadID, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
     private Consumer<JdwpThreadID> stepEventCallback = null;
-    private BiConsumer<JdwpThreadID, /*breakpoint ID*/ Integer> breakpointEventCallback = null;
+    private BiConsumer<JdwpThreadID, DapBreakpointID> breakpointEventCallback = null;
     private Consumer<BreakpointsChangedEvent> breakpointsChangedCallback = null;
 
     public void registerStepEventCallback(Consumer<JdwpThreadID> cb) {
         stepEventCallback = cb;
     }
 
-    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, Integer> cb) {
+    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, DapBreakpointID> cb) {
         breakpointEventCallback = cb;
     }
 
@@ -690,7 +691,7 @@ public class LuceeVm implements ILuceeVm {
             }
 
             if (breakpointEventCallback != null) {
-                final var bpID = (Integer) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
+                final var bpID = (DapBreakpointID) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
                 breakpointEventCallback.accept(threadID, bpID);
             }
         }
@@ -727,8 +728,8 @@ public class LuceeVm implements ILuceeVm {
     }
 
     private AtomicInteger breakpointID = new AtomicInteger();
-    private int nextBreakpointID() {
-        return breakpointID.incrementAndGet();
+    private DapBreakpointID nextDapBreakpointID() {
+        return new DapBreakpointID(breakpointID.incrementAndGet());
     }
 
     public void rebindBreakpoints(CanonicalServerAbsPath serverAbsPath, Collection<ReplayableCfBreakpointRequest> cfBpRequests) {
@@ -743,10 +744,10 @@ public class LuceeVm implements ILuceeVm {
         final RawIdePath ideAbsPath;
         final CanonicalServerAbsPath serverAbsPath;
         final int line;
-        final int id;
+        final DapBreakpointID id;
         final String expr;
 
-        public BpLineAndId(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr) {
+        public BpLineAndId(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -767,16 +768,16 @@ public class LuceeVm implements ILuceeVm {
         for (var i = 0; i < lines.length; ++i) {
             final int line = lines[i];
 
-            int id = iife(() -> {
+            DapBreakpointID id = iife(() -> {
                 if (bpInfo == null) {
-                    return nextBreakpointID();
+                    return nextDapBreakpointID();
                 }
                 for (var z : bpInfo) {
                     if (z.line == line) {
                         return z.id;
                     }
                 }
-                return nextBreakpointID();
+                return nextDapBreakpointID();
             });
 
             result[i] = new BpLineAndId(idePath, serverPath, line, id, exprs[i]);

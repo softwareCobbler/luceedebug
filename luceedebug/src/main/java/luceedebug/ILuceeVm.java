@@ -5,13 +5,14 @@ import java.util.function.Consumer;
 
 import com.sun.jdi.*;
 
+import luceedebug.StrongInt.DapBreakpointID;
 import luceedebug.StrongLong.JdwpThreadID;
 import luceedebug.StrongString.CanonicalServerAbsPath;
 import luceedebug.StrongString.RawIdePath;
 
 public interface ILuceeVm {
     public void registerStepEventCallback(Consumer<JdwpThreadID> cb);
-    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, /*bpID*/Integer> cb);
+    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, DapBreakpointID> cb);
 
     public static class BreakpointsChangedEvent {
         IBreakpoint[] newBreakpoints = new IBreakpoint[0];
