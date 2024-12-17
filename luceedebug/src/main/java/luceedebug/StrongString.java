@@ -13,7 +13,7 @@ public class StrongString {
 
     @Override
     public boolean equals(Object other) {
-        return v.equals(other);
+        return (other instanceof StrongString) && v.equals(((StrongString)other).v);
     }
 
     public static class RawIdePath extends StrongString {
