@@ -53,7 +53,6 @@ class EvaluatesAnExpression {
 
         try {
             LuceeUtils.pollForServerIsActive("http://localhost:" + portBindings.http + "/heartbeat.cfm");
-            System.out.println("poll OK");
 
             final var dapClient = new DapUtils.MockClient();
             
