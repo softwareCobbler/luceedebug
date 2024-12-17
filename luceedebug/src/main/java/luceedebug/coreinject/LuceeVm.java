@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import static luceedebug.coreinject.Iife.iife;
 
 import luceedebug.*;
+import luceedebug.StrongLong.JdwpThreadID;
 import luceedebug.StrongString.CanonicalServerAbsPath;
 import luceedebug.StrongString.RawIdePath;
 
@@ -46,13 +47,13 @@ public class LuceeVm implements ILuceeVm {
     private static class ThreadMap {
         private final Cleaner cleaner = Cleaner.create();
 
-        private final ConcurrentHashMap</*jdwpID for thread*/Long, WeakReference<Thread>> threadByJdwpId = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<JdwpThreadID, WeakReference<Thread>> threadByJdwpId = new ConcurrentHashMap<>();
         private final ConcurrentMap<Thread, ThreadReference> threadRefByThread = new MapMaker()
             .concurrencyLevel(/* default as per docs */ 4)
             .weakKeys()
             .makeMap();
 
-        public Thread getThreadByJdwpId(long jdwpId) {
+        public Thread getThreadByJdwpId(JdwpThreadID jdwpId) {
             var weakRef = threadByJdwpId.get(jdwpId);
             if (weakRef == null) {
                 return null;
@@ -62,7 +63,7 @@ public class LuceeVm implements ILuceeVm {
             }
         }
 
-        private Thread getThreadByJdwpIdOrFail(long id) {
+        private Thread getThreadByJdwpIdOrFail(JdwpThreadID id) {
             var thread = getThreadByJdwpId(id);
             if (thread != null) {
                 return thread;
@@ -86,12 +87,12 @@ public class LuceeVm implements ILuceeVm {
             return null;
         }
 
-        public ThreadReference getThreadRefByJdwpIdOrFail(long jdwpID) {
+        public ThreadReference getThreadRefByJdwpIdOrFail(JdwpThreadID jdwpID) {
             return getThreadRefByThreadOrFail(getThreadByJdwpIdOrFail(jdwpID));
         }
         
         public void register(Thread thread, ThreadReference threadRef) {
-            final long threadID = threadRef.uniqueID();
+            final var threadID = JdwpThreadID.of(threadRef);
             threadByJdwpId.put(threadID, new WeakReference<>(thread));
             threadRefByThread.put(thread, threadRef);
             cleaner.register(thread, () -> {
@@ -102,8 +103,9 @@ public class LuceeVm implements ILuceeVm {
         }
 
         public void unregister(ThreadReference threadRef) {
-            var thread = getThreadByJdwpId(threadRef.uniqueID());
-            threadByJdwpId.remove(threadRef.uniqueID());
+            var threadID = JdwpThreadID.of(threadRef);
+            var thread = getThreadByJdwpId(threadID);
+            threadByJdwpId.remove(threadID);
             if (thread != null) {
                 threadRefByThread.remove(thread);
             }
@@ -429,7 +431,10 @@ public class LuceeVm implements ILuceeVm {
                             bp.addCountFilter(1);
                             bp.setEnabled(true);
                             
-                            steppingStatesByThread.put(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint); // races with step handlers ?
+                            steppingStatesByThread.put(
+                                JdwpThreadID.of(threadRef),
+                                SteppingState.finalizingViaAwaitedBreakpoint
+                            ); // races with step handlers ?
     
                             done.set(true);
                             continue_(threadRef);
@@ -464,16 +469,16 @@ public class LuceeVm implements ILuceeVm {
      * than a user-defined breakpoint event"
      */
     private static enum SteppingState { stepping, finalizingViaAwaitedBreakpoint }
-    private ConcurrentMap</*jdwp threadID*/Long, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
-    private Consumer</*jdwp threadID*/Long> stepEventCallback = null;
-    private BiConsumer</*jdwp threadID*/ Long, /*breakpoint ID*/ Integer> breakpointEventCallback = null;
+    private ConcurrentMap<JdwpThreadID, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
+    private Consumer<JdwpThreadID> stepEventCallback = null;
+    private BiConsumer<JdwpThreadID, /*breakpoint ID*/ Integer> breakpointEventCallback = null;
     private Consumer<BreakpointsChangedEvent> breakpointsChangedCallback = null;
 
-    public void registerStepEventCallback(Consumer<Long> cb) {
+    public void registerStepEventCallback(Consumer<JdwpThreadID> cb) {
         stepEventCallback = cb;
     }
 
-    public void registerBreakpointEventCallback(BiConsumer<Long, Integer> cb) {
+    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, Integer> cb) {
         breakpointEventCallback = cb;
     }
 
@@ -649,24 +654,24 @@ public class LuceeVm implements ILuceeVm {
             return;
         }
 
-        final var threadRef = event.thread();
+        final var threadID = JdwpThreadID.of(event.thread());
 
-        suspendedThreads.add(threadRef.uniqueID());
+        suspendedThreads.add(threadID);
 
-        if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint)) {
+        if (steppingStatesByThread.remove(threadID, SteppingState.finalizingViaAwaitedBreakpoint)) {
             // We're stepping, and we completed a step; now, we hit the breakpoint
             // that the step-completition handler installed. Stepping is complete.
             if (stepEventCallback != null) {
                 // We would delete the breakpoint request here,
                 // but it should have been registered with an eventcount filter of 1,
                 // meaning that it has auto-expired
-                stepEventCallback.accept(event.thread().uniqueID());
+                stepEventCallback.accept(JdwpThreadID.of(event.thread()));
             }
         }
         else {
             // if we are stepping, but we hit a breakpoint, cancel the stepping
-            if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.stepping)) {
-                GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadRef.uniqueID()));
+            if (steppingStatesByThread.remove(threadID, SteppingState.stepping)) {
+                GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadID));
             }
 
             final EventRequest request = event.request();
@@ -674,7 +679,7 @@ public class LuceeVm implements ILuceeVm {
             if (maybe_expr instanceof String) {
                 // if we have a conditional expr bound to this breakpoint, try to evaluate in the context of the topmost cf frame for this thread
                 // if it's not cf-truthy, then unsuspend this thread
-                final var jdwp_threadID = event.thread().uniqueID();
+                final var jdwp_threadID = JdwpThreadID.of(event.thread());
                 if (!GlobalIDebugManagerHolder.debugManager.evaluateAsBooleanForConditionalBreakpoint(
                     threadMap_.getThreadByJdwpIdOrFail(jdwp_threadID),
                     (String)maybe_expr)
@@ -686,7 +691,7 @@ public class LuceeVm implements ILuceeVm {
 
             if (breakpointEventCallback != null) {
                 final var bpID = (Integer) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
-                breakpointEventCallback.accept(threadRef.uniqueID(), bpID);
+                breakpointEventCallback.accept(threadID, bpID);
             }
         }
     }
@@ -701,7 +706,7 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public IDebugFrame[] getStackTrace(long jdwpThreadId) {
-        var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadId);
+        var thread = threadMap_.getThreadByJdwpIdOrFail(new JdwpThreadID(jdwpThreadId));
         return GlobalIDebugManagerHolder.debugManager.getCfStack(thread);
     }
 
@@ -917,9 +922,9 @@ public class LuceeVm implements ILuceeVm {
      * Non-concurrent map is OK here?
      * reasoning: all requests come from the IDE, and there is only one connected IDE, communicating over a single socket.
      */
-    private HashSet</*jdwpID*/ Long> suspendedThreads = new HashSet<>();
+    private HashSet<JdwpThreadID> suspendedThreads = new HashSet<>();
 
-    public void continue_(long jdwpThreadID) {
+    public void continue_(JdwpThreadID jdwpThreadID) {
         final var threadRef = threadMap_.getThreadRefByJdwpIdOrFail(jdwpThreadID);
         continue_(threadRef);
     }
@@ -929,7 +934,7 @@ public class LuceeVm implements ILuceeVm {
         // Our tracking info is slightly out of sync with the realworld here,
         // if we remove the entry from suspended threads and then call resume.
         // But the same problem exists if we call resume, and then remove it from suspended threads ... ?
-        suspendedThreads.remove(threadRef.uniqueID());
+        suspendedThreads.remove(JdwpThreadID.of(threadRef));
 
         /**
          * Make a copy of "current suspend count", rather than loop by testing `threadRef.suspendCount()`
@@ -956,7 +961,23 @@ public class LuceeVm implements ILuceeVm {
             .forEach(jdwpThreadID -> continue_(jdwpThreadID));
     }
 
+    public void stepOut(long jdwpThreadID) {
+        stepOut(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void stepOver(long jdwpThreadID) {
+        stepOver(new JdwpThreadID(jdwpThreadID));
+    }
+
     public void stepIn(long jdwpThreadID) {
+        stepIn(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void continue_(long jdwpThreadID) {
+        continue_(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void stepIn(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
@@ -977,7 +998,7 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public void stepOver(long jdwpThreadID) {
+    public void stepOver(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
@@ -998,7 +1019,7 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public void stepOut(long jdwpThreadID) {
+    private void stepOut(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }

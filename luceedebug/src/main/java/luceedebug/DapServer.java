@@ -69,16 +69,16 @@ public class DapServer implements IDebugProtocolServer {
         this.luceeVm_ = luceeVm;
         this.config_ = config;
 
-        this.luceeVm_.registerStepEventCallback(i64_threadID -> {
-            final var i32_threadID = (int)(long)i64_threadID;
+        this.luceeVm_.registerStepEventCallback(jdwpThreadID -> {
+            final var i32_threadID = (int)(long)jdwpThreadID.v;
             var event = new StoppedEventArguments();
             event.setReason("step");
             event.setThreadId(i32_threadID);
             clientProxy_.stopped(event);
         });
 
-        this.luceeVm_.registerBreakpointEventCallback((i64_threadID, i32_bpID) -> {
-            final int i32_threadID = (int)(long)i64_threadID;
+        this.luceeVm_.registerBreakpointEventCallback((jdwpThreadID, i32_bpID) -> {
+            final int i32_threadID = (int)(long)jdwpThreadID.v;
             var event = new StoppedEventArguments();
             event.setReason("breakpoint");
             event.setThreadId(i32_threadID);
