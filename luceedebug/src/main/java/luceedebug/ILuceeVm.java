@@ -5,6 +5,9 @@ import java.util.function.Consumer;
 
 import com.sun.jdi.*;
 
+import luceedebug.StrongString.CanonicalServerAbsPath;
+import luceedebug.StrongString.RawIdePath;
+
 public interface ILuceeVm {
     public void registerStepEventCallback(Consumer</*threadID*/Long> cb);
     public void registerBreakpointEventCallback(BiConsumer</*threadID*/Long, /*bpID*/Integer> cb);
@@ -37,7 +40,7 @@ public interface ILuceeVm {
     public IDebugEntity[] getNamedVariables(long ID);
     public IDebugEntity[] getIndexedVariables(long ID);
 
-    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines, String[] exprs);
+    public IBreakpoint[] bindBreakpoints(RawIdePath idePath, CanonicalServerAbsPath serverAbsPath, int[] lines, String[] exprs);
 
     public void continue_(long jdwpThreadID);
 

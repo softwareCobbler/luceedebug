@@ -376,11 +376,11 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var path = new OriginalAndTransformedString(
-            args.getSource().getPath(),
-            applyPathTransformsIdeToCf(args.getSource().getPath())
-        );
-        logger.finest("bp for " + path.original + " -> " + path.transformed);
+        final var idePath = new StrongString.RawIdePath(args.getSource().getPath());
+        final var serverAbsPath = new StrongString.CanonicalServerAbsPath(applyPathTransformsIdeToCf(args.getSource().getPath()));
+        
+        logger.finest("bp for " + idePath.v + " -> " + serverAbsPath.v);
+
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
         final String[] exprs = new String[size];
@@ -390,7 +390,7 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (IBreakpoint bp : luceeVm_.bindBreakpoints(path, lines, exprs)) {
+        for (IBreakpoint bp : luceeVm_.bindBreakpoints(idePath, serverAbsPath, lines, exprs)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(bp));
         }
         

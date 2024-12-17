@@ -28,6 +28,8 @@ import java.util.concurrent.Executors;
 import static luceedebug.coreinject.Iife.iife;
 
 import luceedebug.*;
+import luceedebug.StrongString.CanonicalServerAbsPath;
+import luceedebug.StrongString.RawIdePath;
 
 public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
@@ -109,8 +111,8 @@ public class LuceeVm implements ILuceeVm {
     }
 
     private static class ReplayableCfBreakpointRequest {
-        final String ideAbsPath;
-        final String serverAbsPath;
+        final RawIdePath ideAbsPath;
+        final CanonicalServerAbsPath serverAbsPath;
         final int line;
         final int id;
         /**
@@ -140,7 +142,7 @@ public class LuceeVm implements ILuceeVm {
                 && expr.equals(v.expr);
         }
         
-        ReplayableCfBreakpointRequest(String ideAbsPath, String serverAbsPath, int line, int id, String expr) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -149,7 +151,7 @@ public class LuceeVm implements ILuceeVm {
             this.maybeNull_jdwpBreakpointRequest = null;
         }
 
-        ReplayableCfBreakpointRequest(String ideAbsPath, String serverAbsPath, int line, int id, String expr, BreakpointRequest jdwpBreakpointRequest) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr, BreakpointRequest jdwpBreakpointRequest) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -176,7 +178,7 @@ public class LuceeVm implements ILuceeVm {
 
     private final ThreadMap threadMap_ = new ThreadMap();
     private final ExecutorService stepHandlerExecutor = Executors.newSingleThreadExecutor();
-    private final ConcurrentHashMap</*canonical sourceAbsPath*/ String, Set<ReplayableCfBreakpointRequest>> replayableBreakpointRequestsByAbsPath_ = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CanonicalServerAbsPath, Set<ReplayableCfBreakpointRequest>> replayableBreakpointRequestsByAbsPath_ = new ConcurrentHashMap<>();
     
     /**
      * Mapping of "abspath on disk" -> "class file info"
@@ -185,7 +187,7 @@ public class LuceeVm implements ILuceeVm {
      * like "/app/foo.cfc" maps to "myapp.foo" as well as "someOtherMapping.foo", where each mapping
      * is represented by a separate classfile.
      */
-    private final ConcurrentHashMap</*canonical absPath*/ String, Set<KlassMap>> klassMap_ = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CanonicalServerAbsPath, Set<KlassMap>> klassMap_ = new ConcurrentHashMap<>();
     private long JDWP_WORKER_CLASS_ID = 0;
     private ThreadReference JDWP_WORKER_THREADREF = null;
 
@@ -595,14 +597,14 @@ public class LuceeVm implements ILuceeVm {
 
             final var klassMap = maybeNull_klassMap; // definitely non-null
 
-            Set<ReplayableCfBreakpointRequest> replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName.transformed);
+            Set<ReplayableCfBreakpointRequest> replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName);
 
             klassMap_
-                .computeIfAbsent(klassMap.sourceName.transformed, _z -> new HashSet<>())
+                .computeIfAbsent(klassMap.sourceName, _z -> new HashSet<>())
                 .add(klassMap);
 
             if (replayableBreakpointRequests != null) {
-                rebindBreakpoints(klassMap.sourceName.transformed, replayableBreakpointRequests);
+                rebindBreakpoints(klassMap.sourceName, replayableBreakpointRequests);
             }
         }
         catch (Throwable e) {
@@ -724,7 +726,7 @@ public class LuceeVm implements ILuceeVm {
         return breakpointID.incrementAndGet();
     }
 
-    public void rebindBreakpoints(String serverAbsPath, Collection<ReplayableCfBreakpointRequest> cfBpRequests) {
+    public void rebindBreakpoints(CanonicalServerAbsPath serverAbsPath, Collection<ReplayableCfBreakpointRequest> cfBpRequests) {
         var changedBreakpoints = __internal__bindBreakpoints(serverAbsPath, ReplayableCfBreakpointRequest.getLineInfo(cfBpRequests));
 
         if (breakpointsChangedCallback != null) {
@@ -733,30 +735,29 @@ public class LuceeVm implements ILuceeVm {
     }   
 
     static class BpLineAndId {
-        final String ideAbsPath;
-        final String serverAbsPath;
+        final RawIdePath ideAbsPath;
+        final CanonicalServerAbsPath serverAbsPath;
         final int line;
         final int id;
         final String expr;
 
-        public BpLineAndId(String ideAbsPath, String serverAbsPath, int line, int id, String expr) {
+        public BpLineAndId(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, int id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
             this.id = id;
             this.expr = expr;
         }
-
     }
 
-    private BpLineAndId[] freshBpLineAndIdRecordsFromLines(OriginalAndTransformedString absPath, int[] lines, String[] exprs) {
+    private BpLineAndId[] freshBpLineAndIdRecordsFromLines(RawIdePath idePath, CanonicalServerAbsPath serverPath, int[] lines, String[] exprs) {
         if (lines.length != exprs.length) { // really this should be some kind of aggregate
             throw new AssertionError("lines.length != exprs.length");
         }
 
         var result = new BpLineAndId[lines.length];
 
-        Set<ReplayableCfBreakpointRequest> bpInfo = replayableBreakpointRequestsByAbsPath_.get(absPath.transformed);
+        Set<ReplayableCfBreakpointRequest> bpInfo = replayableBreakpointRequestsByAbsPath_.get(serverPath);
 
         for (var i = 0; i < lines.length; ++i) {
             final int line = lines[i];
@@ -773,20 +774,20 @@ public class LuceeVm implements ILuceeVm {
                 return nextBreakpointID();
             });
 
-            result[i] = new BpLineAndId(absPath.original, absPath.transformed, line, id, exprs[i]);
+            result[i] = new BpLineAndId(idePath, serverPath, line, id, exprs[i]);
         }
         return result;
     }
 
-    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines, String[] exprs) {
-        return __internal__bindBreakpoints(absPath.transformed, freshBpLineAndIdRecordsFromLines(absPath, lines, exprs));
+    public IBreakpoint[] bindBreakpoints(RawIdePath idePath, CanonicalServerAbsPath serverPath, int[] lines, String[] exprs) {
+        return __internal__bindBreakpoints(serverPath, freshBpLineAndIdRecordsFromLines(idePath, serverPath, lines, exprs));
     }
 
     /**
      * caller is responsible for transforming the source path into a cf path,
      * i.e. the IDE might say "/foo/bar/baz.cfc" but we are only aware of "/app-host-container/foo/bar/baz.cfc" or etc. 
      */
-    private IBreakpoint[] __internal__bindBreakpoints(String serverAbsPath, BpLineAndId[] lineInfo) {
+    private IBreakpoint[] __internal__bindBreakpoints(CanonicalServerAbsPath serverAbsPath, BpLineAndId[] lineInfo) {
         final Set<KlassMap> klassMapSet = klassMap_.get(serverAbsPath);
 
         if (klassMapSet == null) {
@@ -830,10 +831,9 @@ public class LuceeVm implements ILuceeVm {
         }
 
         garbageCollectedKlassMaps.forEach(klassMap -> {
-            Set<ReplayableCfBreakpointRequest> z = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName.transformed);
+            Set<ReplayableCfBreakpointRequest> z = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName);
             if (z != null) {
-                // TODO: stronger types WRT "transformed" and "non-transformed" paths, they shouldn't both be String they should be some distinct wrapper type
-                z.removeIf(bpReq -> bpReq.serverAbsPath.equals(klassMap.sourceName.transformed));
+                z.removeIf(bpReq -> bpReq.serverAbsPath.equals(klassMap.sourceName));
             }
 
             klassMapSet.remove(klassMap);
@@ -849,7 +849,7 @@ public class LuceeVm implements ILuceeVm {
      * Seems we're not allowed to inspect the jdwp-native id, but we can attach our own
      */
     private IBreakpoint[] __internal__idempotentBindBreakpoints(KlassMap klassMap, BpLineAndId[] lineInfo) {
-        final var replayable = replayableBreakpointRequestsByAbsPath_.computeIfAbsent(klassMap.sourceName.transformed, _z -> new HashSet<>());
+        final var replayable = replayableBreakpointRequestsByAbsPath_.computeIfAbsent(klassMap.sourceName, _z -> new HashSet<>());
         final var result = new ArrayList<IBreakpoint>();
 
         for (int i = 0; i < lineInfo.length; ++i) {
@@ -879,7 +879,7 @@ public class LuceeVm implements ILuceeVm {
             }
         }
 
-        replayableBreakpointRequestsByAbsPath_.put(klassMap.sourceName.transformed, replayable);
+        replayableBreakpointRequestsByAbsPath_.put(klassMap.sourceName, replayable);
 
         return result.toArray(size -> new IBreakpoint[size]);
     }
@@ -887,7 +887,7 @@ public class LuceeVm implements ILuceeVm {
     /**
      * returns an array of the line numbers the old breakpoints were bound to
      */
-    private void clearExistingBreakpoints(String absPath) {
+    private void clearExistingBreakpoints(CanonicalServerAbsPath absPath) {
         Set<ReplayableCfBreakpointRequest> replayable = replayableBreakpointRequestsByAbsPath_.get(absPath);
 
         // "just do it" in all cases
@@ -1055,7 +1055,7 @@ public class LuceeVm implements ILuceeVm {
         final var result = new ArrayList<String>();
         for (var klassMap : klassMap_.values()) {
             for (var mapping : klassMap) {
-                result.add(mapping.sourceName.transformed);
+                result.add(mapping.sourceName.v);
             }
         }
         return result.toArray(size -> new String[size]);

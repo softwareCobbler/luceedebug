@@ -3,17 +3,13 @@ package luceedebug.coreinject;
 import java.util.HashMap;
 
 import luceedebug.Config;
-import luceedebug.OriginalAndTransformedString;
+import luceedebug.StrongString.CanonicalServerAbsPath;
 
 import com.sun.jdi.*;
 
 class KlassMap {
-    /**
-     * original -> original
-     * 
-     * transformed -> canonicalized as per fs config
-     */
-    final public OriginalAndTransformedString sourceName; 
+
+    final public CanonicalServerAbsPath sourceName; 
     final public HashMap<Integer, Location> lineMap;
     private final ClassObjectReference objRef;
     
@@ -29,10 +25,8 @@ class KlassMap {
             lineMap.put(loc.lineNumber(), loc);
         }
 
-        this.sourceName = new OriginalAndTransformedString(
-            sourceName,
-            Config.canonicalizeFileName(sourceName)
-        );
+        this.sourceName = new CanonicalServerAbsPath(Config.canonicalizeFileName(sourceName));
+
         this.lineMap = lineMap;
         this.refType = refType;
     }

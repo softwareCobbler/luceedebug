@@ -32,6 +32,7 @@ class EvaluatesAnExpression {
             .buildOrGetImage(dockerClient, dockerInfo.dockerFile)
             .getImageID();
 
+        System.out.println("container ID is ....");
         final String containerID = DockerUtils
             .getFreshDefaultContainer(
                 dockerClient,
@@ -45,14 +46,19 @@ class EvaluatesAnExpression {
             )
             .getContainerID();
 
+        System.out.println("  ...." + containerID);
+
         dockerClient
             .startContainerCmd(containerID)
             .exec();
 
+        System.out.println("started...");
         HostPortBindings portBindings = DockerUtils.getPublishedHostPortBindings(dockerClient, containerID);
+        System.out.println("pbs..." + portBindings.dap + "," + portBindings.http);
 
         try {
             LuceeUtils.pollForServerIsActive("http://localhost:" + portBindings.http + "/heartbeat.cfm");
+            System.out.println("poll OK");
 
             final var dapClient = new DapUtils.MockClient();
             
