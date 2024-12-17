@@ -958,7 +958,10 @@ public class LuceeVm implements ILuceeVm {
     public void continueAll() {
         // avoid concurrent modification exceptions, calling continue_ mutates `suspendedThreads`
         Arrays
-            .asList(suspendedThreads.toArray(size -> new Long[size]))
+            // TODO: Set<T>.toArray(sz -> new T[sz]) is not typesafe, changing the type of Set<T>
+            // doesn't flow through into the toArray call. Is there a more idiomatic, typesafe way to do
+            // this?
+            .asList(suspendedThreads.toArray(size -> new JdwpThreadID[size]))
             .forEach(jdwpThreadID -> continue_(jdwpThreadID));
     }
 
