@@ -156,7 +156,7 @@ public class Agent {
             result.put("luceedebug.coreinject.ClosureScopeLocalScopeAccessorShim", 0);
             result.put("luceedebug.coreinject.ComponentScopeMarkerTraitShim", 0);
             result.put("luceedebug.coreinject.LuceeVm$SteppingState", 0);
-            result.put("luceedebug.coreinject.LuceeVm$KlassMap", 0);
+            result.put("luceedebug.coreinject.KlassMap", 0);
             result.put("luceedebug.coreinject.LuceeVm$JdwpWorker", 0);
             result.put("luceedebug.coreinject.ValTracker$TaggedObject", 0);
             result.put("luceedebug.coreinject.DebugEntity", 0);

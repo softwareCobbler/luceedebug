@@ -5,7 +5,6 @@ import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +28,10 @@ import java.util.concurrent.Executors;
 import static luceedebug.coreinject.Iife.iife;
 
 import luceedebug.*;
+import luceedebug.StrongInt.DapBreakpointID;
+import luceedebug.StrongLong.JdwpThreadID;
+import luceedebug.StrongString.CanonicalServerAbsPath;
+import luceedebug.StrongString.RawIdePath;
 
 public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
@@ -45,13 +48,13 @@ public class LuceeVm implements ILuceeVm {
     private static class ThreadMap {
         private final Cleaner cleaner = Cleaner.create();
 
-        private final ConcurrentHashMap</*jdwpID for thread*/Long, WeakReference<Thread>> threadByJdwpId = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<JdwpThreadID, WeakReference<Thread>> threadByJdwpId = new ConcurrentHashMap<>();
         private final ConcurrentMap<Thread, ThreadReference> threadRefByThread = new MapMaker()
             .concurrencyLevel(/* default as per docs */ 4)
             .weakKeys()
             .makeMap();
 
-        public Thread getThreadByJdwpId(long jdwpId) {
+        public Thread getThreadByJdwpId(JdwpThreadID jdwpId) {
             var weakRef = threadByJdwpId.get(jdwpId);
             if (weakRef == null) {
                 return null;
@@ -61,7 +64,7 @@ public class LuceeVm implements ILuceeVm {
             }
         }
 
-        private Thread getThreadByJdwpIdOrFail(long id) {
+        private Thread getThreadByJdwpIdOrFail(JdwpThreadID id) {
             var thread = getThreadByJdwpId(id);
             if (thread != null) {
                 return thread;
@@ -85,12 +88,12 @@ public class LuceeVm implements ILuceeVm {
             return null;
         }
 
-        public ThreadReference getThreadRefByJdwpIdOrFail(long jdwpID) {
+        public ThreadReference getThreadRefByJdwpIdOrFail(JdwpThreadID jdwpID) {
             return getThreadRefByThreadOrFail(getThreadByJdwpIdOrFail(jdwpID));
         }
         
         public void register(Thread thread, ThreadReference threadRef) {
-            final long threadID = threadRef.uniqueID();
+            final var threadID = JdwpThreadID.of(threadRef);
             threadByJdwpId.put(threadID, new WeakReference<>(thread));
             threadRefByThread.put(thread, threadRef);
             cleaner.register(thread, () -> {
@@ -101,8 +104,9 @@ public class LuceeVm implements ILuceeVm {
         }
 
         public void unregister(ThreadReference threadRef) {
-            var thread = getThreadByJdwpId(threadRef.uniqueID());
-            threadByJdwpId.remove(threadRef.uniqueID());
+            var threadID = JdwpThreadID.of(threadRef);
+            var thread = getThreadByJdwpId(threadID);
+            threadByJdwpId.remove(threadID);
             if (thread != null) {
                 threadRefByThread.remove(thread);
             }
@@ -110,10 +114,10 @@ public class LuceeVm implements ILuceeVm {
     }
 
     private static class ReplayableCfBreakpointRequest {
-        final String ideAbsPath;
-        final String serverAbsPath;
+        final RawIdePath ideAbsPath;
+        final CanonicalServerAbsPath serverAbsPath;
         final int line;
-        final int id;
+        final DapBreakpointID id;
         /**
          * expression for conditional breakpoints
          * can be null for "not a conditional breakpoint"
@@ -141,7 +145,7 @@ public class LuceeVm implements ILuceeVm {
                 && expr.equals(v.expr);
         }
         
-        ReplayableCfBreakpointRequest(String ideAbsPath, String serverAbsPath, int line, int id, String expr) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -150,7 +154,7 @@ public class LuceeVm implements ILuceeVm {
             this.maybeNull_jdwpBreakpointRequest = null;
         }
 
-        ReplayableCfBreakpointRequest(String ideAbsPath, String serverAbsPath, int line, int id, String expr, BreakpointRequest jdwpBreakpointRequest) {
+        ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr, BreakpointRequest jdwpBreakpointRequest) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
@@ -177,7 +181,7 @@ public class LuceeVm implements ILuceeVm {
 
     private final ThreadMap threadMap_ = new ThreadMap();
     private final ExecutorService stepHandlerExecutor = Executors.newSingleThreadExecutor();
-    private final ConcurrentHashMap</*canonical sourceAbsPath*/ String, Set<ReplayableCfBreakpointRequest>> replayableBreakpointRequestsByAbsPath_ = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CanonicalServerAbsPath, Set<ReplayableCfBreakpointRequest>> replayableBreakpointRequestsByAbsPath_ = new ConcurrentHashMap<>();
     
     /**
      * Mapping of "abspath on disk" -> "class file info"
@@ -186,7 +190,7 @@ public class LuceeVm implements ILuceeVm {
      * like "/app/foo.cfc" maps to "myapp.foo" as well as "someOtherMapping.foo", where each mapping
      * is represented by a separate classfile.
      */
-    private final ConcurrentHashMap</*canonical absPath*/ String, Set<KlassMap>> klassMap_ = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<CanonicalServerAbsPath, Set<KlassMap>> klassMap_ = new ConcurrentHashMap<>();
     private long JDWP_WORKER_CLASS_ID = 0;
     private ThreadReference JDWP_WORKER_THREADREF = null;
 
@@ -428,7 +432,10 @@ public class LuceeVm implements ILuceeVm {
                             bp.addCountFilter(1);
                             bp.setEnabled(true);
                             
-                            steppingStatesByThread.put(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint); // races with step handlers ?
+                            steppingStatesByThread.put(
+                                JdwpThreadID.of(threadRef),
+                                SteppingState.finalizingViaAwaitedBreakpoint
+                            ); // races with step handlers ?
     
                             done.set(true);
                             continue_(threadRef);
@@ -463,16 +470,16 @@ public class LuceeVm implements ILuceeVm {
      * than a user-defined breakpoint event"
      */
     private static enum SteppingState { stepping, finalizingViaAwaitedBreakpoint }
-    private ConcurrentMap</*jdwp threadID*/Long, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
-    private Consumer</*jdwp threadID*/Long> stepEventCallback = null;
-    private BiConsumer</*jdwp threadID*/ Long, /*breakpoint ID*/ Integer> breakpointEventCallback = null;
+    private ConcurrentMap<JdwpThreadID, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
+    private Consumer<JdwpThreadID> stepEventCallback = null;
+    private BiConsumer<JdwpThreadID, DapBreakpointID> breakpointEventCallback = null;
     private Consumer<BreakpointsChangedEvent> breakpointsChangedCallback = null;
 
-    public void registerStepEventCallback(Consumer<Long> cb) {
+    public void registerStepEventCallback(Consumer<JdwpThreadID> cb) {
         stepEventCallback = cb;
     }
 
-    public void registerBreakpointEventCallback(BiConsumer<Long, Integer> cb) {
+    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, DapBreakpointID> cb) {
         breakpointEventCallback = cb;
     }
 
@@ -596,14 +603,14 @@ public class LuceeVm implements ILuceeVm {
 
             final var klassMap = maybeNull_klassMap; // definitely non-null
 
-            Set<ReplayableCfBreakpointRequest> replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName.transformed);
+            Set<ReplayableCfBreakpointRequest> replayableBreakpointRequests = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName);
 
             klassMap_
-                .computeIfAbsent(klassMap.sourceName.transformed, _z -> new HashSet<>())
+                .computeIfAbsent(klassMap.sourceName, _z -> new HashSet<>())
                 .add(klassMap);
 
             if (replayableBreakpointRequests != null) {
-                rebindBreakpoints(klassMap.sourceName.transformed, replayableBreakpointRequests);
+                rebindBreakpoints(klassMap.sourceName, replayableBreakpointRequests);
             }
         }
         catch (Throwable e) {
@@ -648,24 +655,24 @@ public class LuceeVm implements ILuceeVm {
             return;
         }
 
-        final var threadRef = event.thread();
+        final var threadID = JdwpThreadID.of(event.thread());
 
-        suspendedThreads.add(threadRef.uniqueID());
+        suspendedThreads.add(threadID);
 
-        if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.finalizingViaAwaitedBreakpoint)) {
+        if (steppingStatesByThread.remove(threadID, SteppingState.finalizingViaAwaitedBreakpoint)) {
             // We're stepping, and we completed a step; now, we hit the breakpoint
             // that the step-completition handler installed. Stepping is complete.
             if (stepEventCallback != null) {
                 // We would delete the breakpoint request here,
                 // but it should have been registered with an eventcount filter of 1,
                 // meaning that it has auto-expired
-                stepEventCallback.accept(event.thread().uniqueID());
+                stepEventCallback.accept(JdwpThreadID.of(event.thread()));
             }
         }
         else {
             // if we are stepping, but we hit a breakpoint, cancel the stepping
-            if (steppingStatesByThread.remove(threadRef.uniqueID(), SteppingState.stepping)) {
-                GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadRef.uniqueID()));
+            if (steppingStatesByThread.remove(threadID, SteppingState.stepping)) {
+                GlobalIDebugManagerHolder.debugManager.clearStepRequest(threadMap_.getThreadByJdwpIdOrFail(threadID));
             }
 
             final EventRequest request = event.request();
@@ -673,7 +680,7 @@ public class LuceeVm implements ILuceeVm {
             if (maybe_expr instanceof String) {
                 // if we have a conditional expr bound to this breakpoint, try to evaluate in the context of the topmost cf frame for this thread
                 // if it's not cf-truthy, then unsuspend this thread
-                final var jdwp_threadID = event.thread().uniqueID();
+                final var jdwp_threadID = JdwpThreadID.of(event.thread());
                 if (!GlobalIDebugManagerHolder.debugManager.evaluateAsBooleanForConditionalBreakpoint(
                     threadMap_.getThreadByJdwpIdOrFail(jdwp_threadID),
                     (String)maybe_expr)
@@ -684,8 +691,8 @@ public class LuceeVm implements ILuceeVm {
             }
 
             if (breakpointEventCallback != null) {
-                final var bpID = (Integer) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
-                breakpointEventCallback.accept(threadRef.uniqueID(), bpID);
+                final var bpID = (DapBreakpointID) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
+                breakpointEventCallback.accept(threadID, bpID);
             }
         }
     }
@@ -700,7 +707,7 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public IDebugFrame[] getStackTrace(long jdwpThreadId) {
-        var thread = threadMap_.getThreadByJdwpIdOrFail(jdwpThreadId);
+        var thread = threadMap_.getThreadByJdwpIdOrFail(new JdwpThreadID(jdwpThreadId));
         return GlobalIDebugManagerHolder.debugManager.getCfStack(thread);
     }
 
@@ -720,69 +727,12 @@ public class LuceeVm implements ILuceeVm {
         return GlobalIDebugManagerHolder.debugManager.getVariables(ID, IDebugEntity.DebugEntityType.INDEXED);
     }
 
-    static private class KlassMap {
-        /**
-         * original -> original
-         * 
-         * transformed -> canonicalized as per fs config
-         */
-        final public OriginalAndTransformedString sourceName; 
-        final public HashMap<Integer, Location> lineMap;
-        
-        @SuppressWarnings("unused")
-        final public ReferenceType refType;
-
-        private KlassMap(Config config, ReferenceType refType) throws AbsentInformationException {
-            String sourceName = refType.sourceName();
-            var lineMap = new HashMap<Integer, Location>();
-            
-            for (var loc : refType.allLineLocations()) {
-                lineMap.put(loc.lineNumber(), loc);
-            }
-
-            this.sourceName = new OriginalAndTransformedString(
-                sourceName,
-                Config.canonicalizeFileName(sourceName)
-            );
-            this.lineMap = lineMap;
-            this.refType = refType;
-        }
-
-        /**
-         * May return null if ReferenceType throws an AbsentInformationException, which the caller
-         * should interpret as "we can't do anything meaningful with this file"
-         */
-        static KlassMap maybeNull_tryBuildKlassMap(Config config, ReferenceType refType) {
-            try {
-                return new KlassMap(config, refType);
-            }
-            catch (AbsentInformationException e) {
-                return null;
-            }
-            catch (Throwable e) {
-                e.printStackTrace();
-                System.exit(1);
-            }
-
-            // unreachable
-            return null;
-        }
-
-        @Override
-        public boolean equals(Object e) {
-            if (e instanceof KlassMap) {
-                return ((KlassMap)e).sourceName.equals(this.sourceName);
-            }
-            return false;
-        }
-    }
-
     private AtomicInteger breakpointID = new AtomicInteger();
-    private int nextBreakpointID() {
-        return breakpointID.incrementAndGet();
+    private DapBreakpointID nextDapBreakpointID() {
+        return new DapBreakpointID(breakpointID.incrementAndGet());
     }
 
-    public void rebindBreakpoints(String serverAbsPath, Collection<ReplayableCfBreakpointRequest> cfBpRequests) {
+    public void rebindBreakpoints(CanonicalServerAbsPath serverAbsPath, Collection<ReplayableCfBreakpointRequest> cfBpRequests) {
         var changedBreakpoints = __internal__bindBreakpoints(serverAbsPath, ReplayableCfBreakpointRequest.getLineInfo(cfBpRequests));
 
         if (breakpointsChangedCallback != null) {
@@ -791,60 +741,59 @@ public class LuceeVm implements ILuceeVm {
     }   
 
     static class BpLineAndId {
-        final String ideAbsPath;
-        final String serverAbsPath;
+        final RawIdePath ideAbsPath;
+        final CanonicalServerAbsPath serverAbsPath;
         final int line;
-        final int id;
+        final DapBreakpointID id;
         final String expr;
 
-        public BpLineAndId(String ideAbsPath, String serverAbsPath, int line, int id, String expr) {
+        public BpLineAndId(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr) {
             this.ideAbsPath = ideAbsPath;
             this.serverAbsPath = serverAbsPath;
             this.line = line;
             this.id = id;
             this.expr = expr;
         }
-
     }
 
-    private BpLineAndId[] freshBpLineAndIdRecordsFromLines(OriginalAndTransformedString absPath, int[] lines, String[] exprs) {
+    private BpLineAndId[] freshBpLineAndIdRecordsFromLines(RawIdePath idePath, CanonicalServerAbsPath serverPath, int[] lines, String[] exprs) {
         if (lines.length != exprs.length) { // really this should be some kind of aggregate
             throw new AssertionError("lines.length != exprs.length");
         }
 
         var result = new BpLineAndId[lines.length];
 
-        Set<ReplayableCfBreakpointRequest> bpInfo = replayableBreakpointRequestsByAbsPath_.get(absPath.transformed);
+        Set<ReplayableCfBreakpointRequest> bpInfo = replayableBreakpointRequestsByAbsPath_.get(serverPath);
 
         for (var i = 0; i < lines.length; ++i) {
             final int line = lines[i];
 
-            int id = iife(() -> {
+            DapBreakpointID id = iife(() -> {
                 if (bpInfo == null) {
-                    return nextBreakpointID();
+                    return nextDapBreakpointID();
                 }
                 for (var z : bpInfo) {
                     if (z.line == line) {
                         return z.id;
                     }
                 }
-                return nextBreakpointID();
+                return nextDapBreakpointID();
             });
 
-            result[i] = new BpLineAndId(absPath.original, absPath.transformed, line, id, exprs[i]);
+            result[i] = new BpLineAndId(idePath, serverPath, line, id, exprs[i]);
         }
         return result;
     }
 
-    public IBreakpoint[] bindBreakpoints(OriginalAndTransformedString absPath, int[] lines, String[] exprs) {
-        return __internal__bindBreakpoints(absPath.transformed, freshBpLineAndIdRecordsFromLines(absPath, lines, exprs));
+    public IBreakpoint[] bindBreakpoints(RawIdePath idePath, CanonicalServerAbsPath serverPath, int[] lines, String[] exprs) {
+        return __internal__bindBreakpoints(serverPath, freshBpLineAndIdRecordsFromLines(idePath, serverPath, lines, exprs));
     }
 
     /**
      * caller is responsible for transforming the source path into a cf path,
      * i.e. the IDE might say "/foo/bar/baz.cfc" but we are only aware of "/app-host-container/foo/bar/baz.cfc" or etc. 
      */
-    private IBreakpoint[] __internal__bindBreakpoints(String serverAbsPath, BpLineAndId[] lineInfo) {
+    private IBreakpoint[] __internal__bindBreakpoints(CanonicalServerAbsPath serverAbsPath, BpLineAndId[] lineInfo) {
         final Set<KlassMap> klassMapSet = klassMap_.get(serverAbsPath);
 
         if (klassMapSet == null) {
@@ -869,9 +818,32 @@ public class LuceeVm implements ILuceeVm {
 
         clearExistingBreakpoints(serverAbsPath);
 
+        List<KlassMap> garbageCollectedKlassMaps = new ArrayList<>();
+
         for (KlassMap mapping : klassMapSet) {
-            bpListPerMapping = __internal__idempotentBindBreakpoints(mapping, lineInfo);
+            if (mapping.isCollected()) {
+                // This still leaves us with a little race where it gets collected after this,
+                // but before we start adding breakpoints to the gc'd class.
+                garbageCollectedKlassMaps.add(mapping);
+                continue;
+            }
+
+            try {
+                bpListPerMapping = __internal__idempotentBindBreakpoints(mapping, lineInfo);
+            }
+            catch (ObjectCollectedException e) {
+                garbageCollectedKlassMaps.add(mapping);
+            }
         }
+
+        garbageCollectedKlassMaps.forEach(klassMap -> {
+            Set<ReplayableCfBreakpointRequest> z = replayableBreakpointRequestsByAbsPath_.get(klassMap.sourceName);
+            if (z != null) {
+                z.removeIf(bpReq -> bpReq.serverAbsPath.equals(klassMap.sourceName));
+            }
+
+            klassMapSet.remove(klassMap);
+        });
 
         // return just the last one
         return bpListPerMapping;
@@ -883,7 +855,7 @@ public class LuceeVm implements ILuceeVm {
      * Seems we're not allowed to inspect the jdwp-native id, but we can attach our own
      */
     private IBreakpoint[] __internal__idempotentBindBreakpoints(KlassMap klassMap, BpLineAndId[] lineInfo) {
-        final var replayable = replayableBreakpointRequestsByAbsPath_.computeIfAbsent(klassMap.sourceName.transformed, _z -> new HashSet<>());
+        final var replayable = replayableBreakpointRequestsByAbsPath_.computeIfAbsent(klassMap.sourceName, _z -> new HashSet<>());
         final var result = new ArrayList<IBreakpoint>();
 
         for (int i = 0; i < lineInfo.length; ++i) {
@@ -913,7 +885,7 @@ public class LuceeVm implements ILuceeVm {
             }
         }
 
-        replayableBreakpointRequestsByAbsPath_.put(klassMap.sourceName.transformed, replayable);
+        replayableBreakpointRequestsByAbsPath_.put(klassMap.sourceName, replayable);
 
         return result.toArray(size -> new IBreakpoint[size]);
     }
@@ -921,7 +893,7 @@ public class LuceeVm implements ILuceeVm {
     /**
      * returns an array of the line numbers the old breakpoints were bound to
      */
-    private void clearExistingBreakpoints(String absPath) {
+    private void clearExistingBreakpoints(CanonicalServerAbsPath absPath) {
         Set<ReplayableCfBreakpointRequest> replayable = replayableBreakpointRequestsByAbsPath_.get(absPath);
 
         // "just do it" in all cases
@@ -951,9 +923,9 @@ public class LuceeVm implements ILuceeVm {
      * Non-concurrent map is OK here?
      * reasoning: all requests come from the IDE, and there is only one connected IDE, communicating over a single socket.
      */
-    private HashSet</*jdwpID*/ Long> suspendedThreads = new HashSet<>();
+    private HashSet<JdwpThreadID> suspendedThreads = new HashSet<>();
 
-    public void continue_(long jdwpThreadID) {
+    public void continue_(JdwpThreadID jdwpThreadID) {
         final var threadRef = threadMap_.getThreadRefByJdwpIdOrFail(jdwpThreadID);
         continue_(threadRef);
     }
@@ -963,7 +935,7 @@ public class LuceeVm implements ILuceeVm {
         // Our tracking info is slightly out of sync with the realworld here,
         // if we remove the entry from suspended threads and then call resume.
         // But the same problem exists if we call resume, and then remove it from suspended threads ... ?
-        suspendedThreads.remove(threadRef.uniqueID());
+        suspendedThreads.remove(JdwpThreadID.of(threadRef));
 
         /**
          * Make a copy of "current suspend count", rather than loop by testing `threadRef.suspendCount()`
@@ -986,11 +958,30 @@ public class LuceeVm implements ILuceeVm {
     public void continueAll() {
         // avoid concurrent modification exceptions, calling continue_ mutates `suspendedThreads`
         Arrays
-            .asList(suspendedThreads.toArray(size -> new Long[size]))
+            // TODO: Set<T>.toArray(sz -> new T[sz]) is not typesafe, changing the type of Set<T>
+            // doesn't flow through into the toArray call. Is there a more idiomatic, typesafe way to do
+            // this?
+            .asList(suspendedThreads.toArray(size -> new JdwpThreadID[size]))
             .forEach(jdwpThreadID -> continue_(jdwpThreadID));
     }
 
+    public void stepOut(long jdwpThreadID) {
+        stepOut(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void stepOver(long jdwpThreadID) {
+        stepOver(new JdwpThreadID(jdwpThreadID));
+    }
+
     public void stepIn(long jdwpThreadID) {
+        stepIn(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void continue_(long jdwpThreadID) {
+        continue_(new JdwpThreadID(jdwpThreadID));
+    }
+
+    public void stepIn(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
@@ -1011,7 +1002,7 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public void stepOver(long jdwpThreadID) {
+    public void stepOver(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
@@ -1032,7 +1023,7 @@ public class LuceeVm implements ILuceeVm {
         continue_(threadRef);
     }
 
-    public void stepOut(long jdwpThreadID) {
+    private void stepOut(JdwpThreadID jdwpThreadID) {
         if (steppingStatesByThread.containsKey(jdwpThreadID)) {
             return;
         }
@@ -1089,7 +1080,7 @@ public class LuceeVm implements ILuceeVm {
         final var result = new ArrayList<String>();
         for (var klassMap : klassMap_.values()) {
             for (var mapping : klassMap) {
-                result.add(mapping.sourceName.transformed);
+                result.add(mapping.sourceName.v);
             }
         }
         return result.toArray(size -> new String[size]);

@@ -69,20 +69,20 @@ public class DapServer implements IDebugProtocolServer {
         this.luceeVm_ = luceeVm;
         this.config_ = config;
 
-        this.luceeVm_.registerStepEventCallback(i64_threadID -> {
-            final var i32_threadID = (int)(long)i64_threadID;
+        this.luceeVm_.registerStepEventCallback(jdwpThreadID -> {
+            final var i32_threadID = (int)(long)jdwpThreadID.v;
             var event = new StoppedEventArguments();
             event.setReason("step");
             event.setThreadId(i32_threadID);
             clientProxy_.stopped(event);
         });
 
-        this.luceeVm_.registerBreakpointEventCallback((i64_threadID, i32_bpID) -> {
-            final int i32_threadID = (int)(long)i64_threadID;
+        this.luceeVm_.registerBreakpointEventCallback((jdwpThreadID, bpID) -> {
+            final int i32_threadID = (int)(long)jdwpThreadID.v;
             var event = new StoppedEventArguments();
             event.setReason("breakpoint");
             event.setThreadId(i32_threadID);
-            event.setHitBreakpointIds(new Integer[] { i32_bpID });
+            event.setHitBreakpointIds(new Integer[] { bpID.v });
             clientProxy_.stopped(event);
         });
 
@@ -376,11 +376,11 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var path = new OriginalAndTransformedString(
-            args.getSource().getPath(),
-            applyPathTransformsIdeToCf(args.getSource().getPath())
-        );
-        logger.finest("bp for " + path.original + " -> " + path.transformed);
+        final var idePath = new StrongString.RawIdePath(args.getSource().getPath());
+        final var serverAbsPath = new StrongString.CanonicalServerAbsPath(applyPathTransformsIdeToCf(args.getSource().getPath()));
+        
+        logger.finest("bp for " + idePath.v + " -> " + serverAbsPath.v);
+
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
         final String[] exprs = new String[size];
@@ -390,7 +390,7 @@ public class DapServer implements IDebugProtocolServer {
         }
 
         var result = new ArrayList<Breakpoint>();
-        for (IBreakpoint bp : luceeVm_.bindBreakpoints(path, lines, exprs)) {
+        for (IBreakpoint bp : luceeVm_.bindBreakpoints(idePath, serverAbsPath, lines, exprs)) {
             result.add(map_cfBreakpoint_to_lsp4jBreakpoint(bp));
         }
         
