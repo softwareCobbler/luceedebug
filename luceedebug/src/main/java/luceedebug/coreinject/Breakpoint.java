@@ -1,7 +1,7 @@
 package luceedebug.coreinject;
 
 import luceedebug.*;
-import luceedebug.StrongInt.DapBreakpointID;
+import luceedebug.strong.DapBreakpointID;
 
 class Breakpoint implements IBreakpoint {
     final int line;
@@ -23,6 +23,6 @@ class Breakpoint implements IBreakpoint {
     }
 
     public int getLine() { return line; }
-    public int getID() { return ID.v; }
+    public int getID() { return ID.get(); }
     public boolean getIsBound() { return isBound; }
 }

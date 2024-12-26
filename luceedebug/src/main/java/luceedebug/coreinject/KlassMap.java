@@ -3,7 +3,7 @@ package luceedebug.coreinject;
 import java.util.HashMap;
 
 import luceedebug.Config;
-import luceedebug.StrongString.CanonicalServerAbsPath;
+import luceedebug.strong.CanonicalServerAbsPath;
 
 import com.sun.jdi.*;
 

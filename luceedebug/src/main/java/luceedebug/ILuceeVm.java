@@ -5,10 +5,10 @@ import java.util.function.Consumer;
 
 import com.sun.jdi.*;
 
-import luceedebug.StrongInt.DapBreakpointID;
-import luceedebug.StrongLong.JdwpThreadID;
-import luceedebug.StrongString.CanonicalServerAbsPath;
-import luceedebug.StrongString.RawIdePath;
+import luceedebug.strong.DapBreakpointID;
+import luceedebug.strong.JdwpThreadID;
+import luceedebug.strong.CanonicalServerAbsPath;
+import luceedebug.strong.RawIdePath;
 
 public interface ILuceeVm {
     public void registerStepEventCallback(Consumer<JdwpThreadID> cb);

@@ -28,10 +28,10 @@ import java.util.concurrent.Executors;
 import static luceedebug.coreinject.Iife.iife;
 
 import luceedebug.*;
-import luceedebug.StrongInt.DapBreakpointID;
-import luceedebug.StrongLong.JdwpThreadID;
-import luceedebug.StrongString.CanonicalServerAbsPath;
-import luceedebug.StrongString.RawIdePath;
+import luceedebug.strong.DapBreakpointID;
+import luceedebug.strong.JdwpThreadID;
+import luceedebug.strong.CanonicalServerAbsPath;
+import luceedebug.strong.RawIdePath;
 
 public class LuceeVm implements ILuceeVm {
     // This is a key into a map stored on breakpointRequest objects; the value should always be of Integer type
@@ -1080,7 +1080,7 @@ public class LuceeVm implements ILuceeVm {
         final var result = new ArrayList<String>();
         for (var klassMap : klassMap_.values()) {
             for (var mapping : klassMap) {
-                result.add(mapping.sourceName.v);
+                result.add(mapping.sourceName.get());
             }
         }
         return result.toArray(size -> new String[size]);

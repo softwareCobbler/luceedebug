@@ -237,7 +237,7 @@ public class Agent {
         //
         // See(lucee): loader/src/main/java/lucee/loader/engine/CFMLEngineFactory.java
         //
-        System.setProperty("org.osgi.framework.bootdelegation", "com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug,luceedebug_shadow.*");
+        System.setProperty("org.osgi.framework.bootdelegation", "com.sun.jdi,com.sun.jdi.connect,com.sun.jdi.event,com.sun.jdi.request,luceedebug,luceedebug.strong,luceedebug_shadow.*");
 
         // touch System.out before agent is loaded, otherwise trying to print from within the agent during jvm initialization phase
         // can trigger stackoverflows. And note that System.out.println("") doesn't seem to work, as if printing the empty string

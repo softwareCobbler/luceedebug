@@ -26,6 +26,9 @@ import org.eclipse.lsp4j.jsonrpc.util.ToStringBuilder;
 
 import com.sun.jdi.ObjectCollectedException;
 
+import luceedebug.strong.CanonicalServerAbsPath;
+import luceedebug.strong.RawIdePath;
+
 public class DapServer implements IDebugProtocolServer {
     private final ILuceeVm luceeVm_;
     private final Config config_;
@@ -70,7 +73,7 @@ public class DapServer implements IDebugProtocolServer {
         this.config_ = config;
 
         this.luceeVm_.registerStepEventCallback(jdwpThreadID -> {
-            final var i32_threadID = (int)(long)jdwpThreadID.v;
+            final var i32_threadID = (int)(long)jdwpThreadID.get();
             var event = new StoppedEventArguments();
             event.setReason("step");
             event.setThreadId(i32_threadID);
@@ -78,11 +81,11 @@ public class DapServer implements IDebugProtocolServer {
         });
 
         this.luceeVm_.registerBreakpointEventCallback((jdwpThreadID, bpID) -> {
-            final int i32_threadID = (int)(long)jdwpThreadID.v;
+            final int i32_threadID = (int)(long)jdwpThreadID.get();
             var event = new StoppedEventArguments();
             event.setReason("breakpoint");
             event.setThreadId(i32_threadID);
-            event.setHitBreakpointIds(new Integer[] { bpID.v });
+            event.setHitBreakpointIds(new Integer[] { bpID.get() });
             clientProxy_.stopped(event);
         });
 
@@ -376,10 +379,10 @@ public class DapServer implements IDebugProtocolServer {
 
     @Override
     public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments args) {
-        final var idePath = new StrongString.RawIdePath(args.getSource().getPath());
-        final var serverAbsPath = new StrongString.CanonicalServerAbsPath(applyPathTransformsIdeToCf(args.getSource().getPath()));
+        final var idePath = new RawIdePath(args.getSource().getPath());
+        final var serverAbsPath = new CanonicalServerAbsPath(applyPathTransformsIdeToCf(args.getSource().getPath()));
         
-        logger.finest("bp for " + idePath.v + " -> " + serverAbsPath.v);
+        logger.finest("bp for " + idePath.get() + " -> " + serverAbsPath.get());
 
         final int size = args.getBreakpoints().length;
         final int[] lines = new int[size];
