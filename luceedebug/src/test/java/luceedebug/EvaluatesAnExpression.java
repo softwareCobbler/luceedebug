@@ -66,7 +66,7 @@ class EvaluatesAnExpression {
             DapUtils.attach(dapServer).join();
 
             DapUtils
-                .setBreakpoints(dapServer, "/var/www/a.cfm", 3)
+                .setBreakpoints(dapServer, "/var/www/a.cfm", 4)
                 .join();
 
             final var requestThreadToBeBlockedByBreakpoint = new java.lang.Thread(() -> {
@@ -104,6 +104,21 @@ class EvaluatesAnExpression {
                 "evaluation result as expected"
             );
             
+            assertEquals(
+                "\"bar\"",
+                DapUtils.evaluate(dapServer, frameID, "e").join().getResult(),
+                "e is initialized to \"bar\""
+            );
+
+            // An expression that will throw an exception, should not clobber "e" in the local scope
+            DapUtils.evaluate(dapServer, frameID, "zzz");
+
+            assertEquals(
+                "\"bar\"",
+                DapUtils.evaluate(dapServer, frameID, "e").join().getResult(),
+                "e is still \"bar\""
+            );
+
             DapUtils.continue_(dapServer, threadID);
             
             requestThreadToBeBlockedByBreakpoint.join();
