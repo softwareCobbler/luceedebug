@@ -43,12 +43,13 @@ class ExprEvaluator {
         // At this time, `lucee.runtime.compiler.Renderer.loadPage` will
         // cache compilations based on the hash of the source text; so, using the same result name
         // every time ensures we don't need to recompile a particular expression every time.
+        static protected final String errName = "__luceedebug__error";
         static protected final String resultName = "__luceedebug__evalResult";
         static protected String getEvaluatableSourceText(String expr) {
             return ""
                 + "<cfscript>"
                 + "try { variables['" + resultName + "'] = {'ok': true, 'result': " + expr + " } }"
-                + "catch (any e) { variables['" + resultName + "'] = {'ok': false, 'result': e.message } }"
+                + "catch (any " + errName + ") { variables['" + resultName + "'] = {'ok': false, 'result': " + errName + ".message } }"
                 + "</cfscript>";
         }
 
