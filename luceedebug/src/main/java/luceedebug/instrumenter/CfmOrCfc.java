@@ -196,7 +196,18 @@ public class CfmOrCfc extends ClassVisitor {
             || name.startsWith("udfDefaultValue")
             || name.equals("staticConstructor")
         )) {
-            final String delegateToName = "__luceedebug__" + name;
+            // We'd like to retain the ability for `callStackGet` to return function names.
+            // Lucee scans stack traces for frames starting with "udfCall" in order to reflect back the function names.
+            // It will ignore wrappers (that start with "udfCall") because we don't visit line number info
+            // in those functions (that is, our wrapper method that changes the body of the lucee function to call our
+            // "delegated-to" function has no line info, but the delegated-to method does get line number info visited).
+            // Because the wrapper methods have no line info, stack trace elems in those methods have line numbers of -1,
+            // which luckily for us, means "ignore this frame", for Lucee's `callStackGet` method.
+            // see `lucee.runtime.functions.system.CallStackGet`
+            final String delegateToName = name.startsWith("udfCall")
+                ? "udfCall__luceedebug__" + name
+                : "__luceedebug__" + name;
+
             createWrapperMethod(access, name, descriptor, signature, exceptions, delegateToName);
 
             final var mv = super.visitMethod(access, delegateToName, descriptor, signature, exceptions);
