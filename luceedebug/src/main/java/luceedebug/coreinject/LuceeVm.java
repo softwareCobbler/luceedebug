@@ -142,7 +142,7 @@ public class LuceeVm implements ILuceeVm {
                 && serverAbsPath.equals(v.serverAbsPath)
                 && line == v.line
                 && id == v.id
-                && expr.equals(v.expr);
+                && (expr == null ? v.expr == null : expr.equals(v.expr));
         }
         
         ReplayableCfBreakpointRequest(RawIdePath ideAbsPath, CanonicalServerAbsPath serverAbsPath, int line, DapBreakpointID id, String expr) {
