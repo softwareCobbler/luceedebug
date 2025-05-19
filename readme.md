@@ -134,10 +134,19 @@ A CFML debug configuration looks like:
         "idePrefix": "${workspaceFolder}",
         "serverPrefix": "/app"
       }
-    ]
+    ],
+    // optional; controls how paths returned from the debugger are normalized in the client.
+    // options:
+    //   "none"    - (default) no normalization; use paths exactly as returned from the debugger
+    //   "auto"    - use the platform default (e.g., "/" on macOS/Linux, "\" on Windows)
+    //   "posix"   - always use forward slashes ("/")
+    //   "windows" - always use backslashes ("\")
+    "pathSeparator": "none"
 }
 ```
 `hostName`/`port` should match the `debugHost`/`debugPort` of the Java agent's configuration. (There are exceptions; e.g., on remote hosts where DNS and/or port forwarding are in play.)
+
+Use the `pathSeparator` option to control how file paths returned from the server are interpreted on your client machine. This is useful when debugging across different operating systems or dealing with platform-specific path formats.
 
 #### Mapping Paths with `pathTransforms`
 
