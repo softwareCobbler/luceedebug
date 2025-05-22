@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	const normalizePathFromSession = (session: vscode.DebugSession, path: string): string => {
-		const pathSeparator = session.configuration?.pathSeparator ?? "none";
+		const pathSeparator = session.configuration?.pathSeparator ?? "auto";
 		if (pathSeparator === "none") return path;
 
 		const platformDefault = process.platform === "win32" ? "\\" : "/";

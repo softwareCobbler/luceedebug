@@ -129,7 +129,7 @@
               "pathSeparator": {
                 "type": "string",
                 "enum": ["none", "auto", "posix", "windows"],
-                "default": "none",
+                "default": "auto",
                 "description": "How paths returned from the debugger should be normalized (none, auto, posix, or windows)."
               }
             }
@@ -147,7 +147,7 @@
                 "serverPrefix": "/app"
               }
             ],
-            "pathSeparator": "none",
+            "pathSeparator": "auto",
             "port": 8000
           }
         ],
@@ -166,7 +166,7 @@
                   "serverPrefix": "/app"
                 }
               ],
-              "pathSeparator": "none",
+              "pathSeparator": "auto",
               "port": 8000
             }
           }

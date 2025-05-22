@@ -141,7 +141,7 @@ A CFML debug configuration looks like:
     //   "auto"    - use the platform default (e.g., "/" on macOS/Linux, "\" on Windows)
     //   "posix"   - always use forward slashes ("/")
     //   "windows" - always use backslashes ("\")
-    "pathSeparator": "none"
+    "pathSeparator": "auto"
 }
 ```
 `hostName`/`port` should match the `debugHost`/`debugPort` of the Java agent's configuration. (There are exceptions; e.g., on remote hosts where DNS and/or port forwarding are in play.)
