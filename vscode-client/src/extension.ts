@@ -64,6 +64,19 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
+	const normalizePathFromSession = (session: vscode.DebugSession, path: string): string => {
+		const pathSeparator = session.configuration?.pathSeparator ?? "auto";
+		if (pathSeparator === "none") return path;
+
+		const platformDefault = process.platform === "win32" ? "\\" : "/";
+		const normalizedSeparator = pathSeparator === "posix"
+			? "/"
+			: pathSeparator === "windows"
+			? "\\"
+			: platformDefault;
+		return path.replace(/[\\/]/g, normalizedSeparator);
+	};
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("luceedebug.dump", async (args?: Partial<DebugPaneContextMenuArgs>) => {
 			if (args?.variable === undefined || args.variable.variablesReference === 0) {
@@ -219,6 +232,13 @@ export function activate(context: vscode.ExtensionContext) {
 					outputChannel.append(JSON.stringify(message, null, 4) + "\n");
 				},
 				onDidSendMessage(message: any) : void {
+					if (message.command === "stackTrace" || (message.type === "response" && message.body?.stackFrames)) {
+						for (const frame of message.body.stackFrames) {
+							if (frame.source?.path) {
+								frame.source.path = normalizePathFromSession(session, frame.source.path);
+							}
+						}
+					}
 					outputChannel.append(JSON.stringify(message, null, 4) + "\n");
 				}
 			}
