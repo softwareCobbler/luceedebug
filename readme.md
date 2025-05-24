@@ -121,7 +121,7 @@ Steps to run the extension in VS Code's "extension development host":
 ### VS Code Extension Configuration
 
 A CFML debug configuration looks like:
-```json
+```json5
 {
     "type": "cfml",
     "request": "attach",
