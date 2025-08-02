@@ -6,34 +6,41 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-dev-windows": "npx tsc && node \"node_modules/esbuild/bin/esbuild\" ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js",
-    "build-dev-linux":   "npx tsc && ./node_modules/esbuild/bin/esbuild        ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js"
+    "build-dev-linux": "npx tsc && ./node_modules/esbuild/bin/esbuild        ./src/extension.ts --bundle --sourcemap --tsconfig=./tsconfig.json --external:vscode --format=cjs --platform=node --outfile=dist/extension.js"
   },
-  "keywords": ["ColdFusion", "debug", "debugger", "Lucee"],
+  "keywords": [
+    "ColdFusion",
+    "debug",
+    "debugger",
+    "Lucee"
+  ],
   "author": "David Rogers",
   "license": "ISC",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onDebugResolve:cfml"
   ],
-  "categories": ["Debuggers"],
+  "categories": [
+    "Debuggers"
+  ],
   "repository": {
-		"type": "git",
-		"url": "https://github.com/softwareCobbler/luceedebug"
-	},
+    "type": "git",
+    "url": "https://github.com/softwareCobbler/luceedebug"
+  },
   "engines": {
     "vscode": "^1.63.0"
   },
   "contributes": {
     "customEditors": [
-			{
-				"viewType": "luceedebug.dumpView",
-				"displayName": "luceedebug var dump",
-				"selector": [
-					{
-						"filenamePattern": "*.luceedebugdumpview"
-					}
-				]
-			}
+      {
+        "viewType": "luceedebug.dumpView",
+        "displayName": "luceedebug var dump",
+        "selector": [
+          {
+            "filenamePattern": "*.luceedebugdumpview"
+          }
+        ]
+      }
     ],
     "menus": {
       "debug/variables/context": [
@@ -52,13 +59,21 @@
       ]
     },
     "languages": [
-			{
-				"id": "cfml",
-				"extensions": [".cfm", ".cfc", ".cfml", ".cfs"],
-				"aliases": ["ColdFusion", "CFML"],
-				"filenames": []
-			}
-		],
+      {
+        "id": "cfml",
+        "extensions": [
+          ".cfm",
+          ".cfc",
+          ".cfml",
+          ".cfs"
+        ],
+        "aliases": [
+          "ColdFusion",
+          "CFML"
+        ],
+        "filenames": []
+      }
+    ],
     "breakpoints": [
       {
         "language": "cfml"
@@ -112,12 +127,21 @@
                 "type": "array",
                 "description": "Ordered list of source file path transforms (e.g. if in your IDE, you are editing '/foo/bar/baz.cfc', but the cf engine knows it as '/app/bar/baz.cfc', it needs to be transformed). The first one that matches for a particular need 'wins'. If none match (or the list is empty), no paths are transformed.",
                 "items": {
-                    "type": "object",
-                    "properties": {
-                      "idePrefix": {"type": "string", "default": "${workspaceFolder}"},
-                      "serverPrefix": {"type": "string", "default": "/container-root/app"}
+                  "type": "object",
+                  "properties": {
+                    "idePrefix": {
+                      "type": "string",
+                      "default": "${workspaceFolder}"
                     },
-                    "required": ["idePrefix", "serverPrefix"]
+                    "serverPrefix": {
+                      "type": "string",
+                      "default": "/container-root/app"
+                    }
+                  },
+                  "required": [
+                    "idePrefix",
+                    "serverPrefix"
+                  ]
                 },
                 "default": [
                   {
@@ -128,7 +152,12 @@
               },
               "pathSeparator": {
                 "type": "string",
-                "enum": ["none", "auto", "posix", "windows"],
+                "enum": [
+                  "none",
+                  "auto",
+                  "posix",
+                  "windows"
+                ],
                 "default": "auto",
                 "description": "How paths returned from the debugger should be normalized (none, auto, posix, or windows)."
               }
@@ -181,11 +210,10 @@
     "vscode-debugadapter": "^1.51.0"
   },
   "devDependencies": {
-    "esbuild": "^0.14.5"
+    "esbuild": "^0.14.5",
+    "typescript": "^5.9.2"
   },
   "$defs": {
-    "foo": {
-
-    }               
+    "foo": {}
   }
 }
