@@ -54,7 +54,7 @@
     "languages": [
 			{
 				"id": "cfml",
-				"extensions": [".cfm", ".cfc", ".cfml"],
+				"extensions": [".cfm", ".cfc", ".cfml", ".cfs"],
 				"aliases": ["ColdFusion", "CFML"],
 				"filenames": []
 			}
