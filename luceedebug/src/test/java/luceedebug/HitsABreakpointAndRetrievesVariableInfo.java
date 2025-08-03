@@ -142,6 +142,9 @@ class HitsABreakpointAndRetrievesVariableInfo {
             else if (dockerInfo.engineVersion == 6) {
                 assertEquals("42", target.getValue());
             }
+            else if (dockerInfo.engineVersion == 7) {
+                assertEquals("42.0", target.getValue());
+            }
             else {
                 unreachable();
             }

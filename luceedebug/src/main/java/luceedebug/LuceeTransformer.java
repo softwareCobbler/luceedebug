@@ -101,7 +101,11 @@ public class LuceeTransformer implements ClassFileTransformer {
                     return null;
                 }
             }
-            else if (superClass.equals("lucee/runtime/ComponentPageImpl") || superClass.equals("lucee/runtime/PageImpl")) {
+            else if (
+                superClass.equals("lucee/runtime/ComponentPageImpl")
+                || superClass.equals("lucee/runtime/PageImpl")
+                || superClass.equals("lucee/runtime/Page") // seems to be necessary for lucee7
+            ) {
                 // System.out.println("[luceedebug] Instrumenting " + className);
                 if (GlobalIDebugManagerHolder.luceeCoreLoader == null) {
                     System.out.println("Got class " + className + " before receiving PageContextImpl, debugging will fail.");
