@@ -1,4 +1,4 @@
-FROM lucee/lucee:5.3.10.120-tomcat9.0-jdk11-openjdk-2303
+FROM lucee/lucee:5.4.5.23-tomcat9.0-jdk11-temurin-jammy
 
 # "@LUCEEDEBUG_JAR" replaced programmatically with filename
 ENV LUCEEDEBUG_JAR /build/@LUCEEDEBUG_JAR

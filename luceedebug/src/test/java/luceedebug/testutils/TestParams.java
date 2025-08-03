@@ -31,8 +31,8 @@ public class TestParams {
 
     public static LuceeAndDockerInfo[] getLuceeAndDockerInfo() {
         return new LuceeAndDockerInfo[] {
-            new LuceeAndDockerInfo(5, "../test/docker/5.3.10.120"),
-            new LuceeAndDockerInfo(6, "../test/docker/6.1.0.243")
+            new LuceeAndDockerInfo(5, "../test/docker/5"),
+            new LuceeAndDockerInfo(6, "../test/docker/6")
         };
     }
 }
