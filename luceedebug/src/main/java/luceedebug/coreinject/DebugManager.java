@@ -392,16 +392,26 @@ public class DebugManager implements IDebugManager {
         if (stack == null) {
             return false;
         }
-        if (stack.isEmpty()) {
-            return false;
-        }
         
-        DebugFrame frame = stack.get(stack.size() - 1);
-        
-        if (frame instanceof Frame) {
-            return doEvaluateAsBoolean((Frame)frame, expr);
+        // We have observed concurrent read/writes here to the stack frame list, where the expected frame is popped off the stack
+        // somewhere between determining the index of the last element and attempting to access the last element.
+        // It is not expected to happen often, so just catch/log/return false in this case.
+        try {
+            if (stack.isEmpty()) {
+                return false;
+            }
+
+            DebugFrame frame = stack.get(stack.size() - 1); // n.b. stack can be empty despite our prior check
+
+            if (frame instanceof Frame) {
+                return doEvaluateAsBoolean((Frame)frame, expr);
+            }
+            else {
+                return false;
+            }
         }
-        else {
+        catch (IndexOutOfBoundsException e) {
+            System.out.println("[luceedebug]: evaluateAsBooleanForConditionalBreakpoint oob stack read, returning `false`");
             return false;
         }
     }
