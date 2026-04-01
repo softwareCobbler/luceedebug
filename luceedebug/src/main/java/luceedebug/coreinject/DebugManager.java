@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import javax.servlet.ServletException;
 
 import com.google.common.collect.MapMaker;
 import com.sun.jdi.Bootstrap;
@@ -196,7 +195,7 @@ public class DebugManager implements IDebugManager {
         }
 
         // is there a way to conjure up a new PageContext without having some other page context?
-        public static PageContextAndOutputStream ephemeralPageContextFromOther(PageContext pc) throws ServletException {
+        public static PageContextAndOutputStream ephemeralPageContextFromOther(PageContext pc) throws Exception {
             final var outputStream = new ByteArrayOutputStream();
             PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
                 /*Config config*/ pc.getConfig(),
@@ -205,7 +204,7 @@ public class DebugManager implements IDebugManager {
                 /*String host*/ "",
                 /*String scriptName*/ "",
                 /*String queryString*/ "",
-                /*Cookie[] cookies*/ new javax.servlet.http.Cookie[] {},
+                /*Cookie[] cookies*/ null,
                 /*Map<String, Object> headers*/ new HashMap<>(),
                 /*Map<String, String> parameters*/ new HashMap<>(),
                 /*Map<String, Object> attributes*/ new HashMap<>(),

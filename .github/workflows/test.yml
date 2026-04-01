@@ -1,0 +1,35 @@
+name: Test LuceeDebug Agent
+
+on: [ push, pull_request, workflow_dispatch ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Build shadowJar
+      run: ./gradlew :luceedebug:shadowjar
+
+    # Docker is pre-installed on ubuntu-latest
+    - name: Run tests (Lucee 5, 6, 7 via Docker)
+      run: ./gradlew :luceedebug:test --info
+      timeout-minutes: 30
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          luceedebug/build/reports/tests/
+          luceedebug/build/test-results/

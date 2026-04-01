@@ -1,4 +1,4 @@
-FROM lucee/lucee:7.0.0.317-SNAPSHOT-nginx-tomcat11.0-jdk21-temurin-noble
+FROM lucee/lucee:7.0.0.395-nginx-tomcat11.0-jdk21-temurin-noble
 
 # "@LUCEEDEBUG_JAR" replaced programmatically with filename
 ENV LUCEEDEBUG_JAR /build/@LUCEEDEBUG_JAR
