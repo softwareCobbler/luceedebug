@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+id: FA79A831-7D30-4D8A-B7F300DECEB00001
+name: "Luceedebug"
+symbolic-name: "luceedebug"
+description: "Native CFML debugger for VS Code - no Java agent required"
+version: "3.0.0-BETA"
+lucee-core-version: "7.1.0.6"
+start-bundles: true
+release-type: server
+startup-hook: [{"class": "luceedebug.extension.ExtensionActivator", "bundle-name": "luceedebug-osgi", "bundle-version": "3.0.0.0-BETA"}]

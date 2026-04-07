@@ -13,8 +13,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import javax.servlet.ServletException;
-
 import com.google.common.collect.MapMaker;
 import com.sun.jdi.Bootstrap;
 import com.sun.jdi.VirtualMachine;
@@ -75,7 +73,12 @@ public class DebugManager implements IDebugManager {
 
         new Thread(() -> {
             System.out.println("[luceedebug] jdwp self connect OK");
-            DapServer.createForSocket(luceeVm, config, debugHost, debugPort);
+            try {
+                DapServer.createForSocket(luceeVm, config, debugHost, debugPort);
+            } catch (Throwable t) {
+                System.out.println("[luceedebug] DAP server thread failed: " + t.getMessage());
+                t.printStackTrace();
+            }
         }, threadName).start();
     }
 
@@ -196,7 +199,7 @@ public class DebugManager implements IDebugManager {
         }
 
         // is there a way to conjure up a new PageContext without having some other page context?
-        public static PageContextAndOutputStream ephemeralPageContextFromOther(PageContext pc) throws ServletException {
+        public static PageContextAndOutputStream ephemeralPageContextFromOther(PageContext pc) throws Exception {
             final var outputStream = new ByteArrayOutputStream();
             PageContext freshEphemeralPageContext = lucee.runtime.util.PageContextUtil.getPageContext(
                 /*Config config*/ pc.getConfig(),
@@ -205,7 +208,7 @@ public class DebugManager implements IDebugManager {
                 /*String host*/ "",
                 /*String scriptName*/ "",
                 /*String queryString*/ "",
-                /*Cookie[] cookies*/ new javax.servlet.http.Cookie[] {},
+                /*Cookie[] cookies*/ null,
                 /*Map<String, Object> headers*/ new HashMap<>(),
                 /*Map<String, String> parameters*/ new HashMap<>(),
                 /*Map<String, Object> attributes*/ new HashMap<>(),
@@ -499,10 +502,17 @@ public class DebugManager implements IDebugManager {
     }
 
     synchronized public IDebugFrame[] getCfStack(Thread thread) {
+        System.out.println("[luceedebug] getCfStack: looking for thread=" + thread.getName() + " (id=" + thread.getId() + ") identity=" + System.identityHashCode(thread));
+        System.out.println("[luceedebug] getCfStack: cfStackByThread has " + cfStackByThread.size() + " entries:");
+        for (var entry : cfStackByThread.entrySet()) {
+            Thread t = entry.getKey();
+            System.out.println("[luceedebug]   thread=" + t.getName() + " (id=" + t.getId() + ") identity=" + System.identityHashCode(t) + " frames=" + entry.getValue().size());
+        }
         ArrayList<DebugFrame> stack = cfStackByThread.get(thread);
-        if (stack == null) {
-            System.out.println("getCfStack called, frames was null, frames is " + cfStackByThread + ", passed thread was " + thread);
-            System.out.println("                   thread=" + thread + " this=" + this);
+
+        // Agent mode: only use bytecode-instrumented frames, no native fallback
+        if (stack == null || stack.isEmpty()) {
+            System.out.println("[luceedebug] getCfStack: no instrumented frames for thread " + thread);
             return new Frame[0];
         }
 
@@ -512,9 +522,11 @@ public class DebugManager implements IDebugManager {
         // go backwards, "most recent first"
         for (int i = stack.size() - 1; i >= 0; --i) {
             DebugFrame frame = stack.get(i);
+            System.out.println("[luceedebug] getCfStack: frame[" + i + "] line=" + frame.getLine() + " source=" + frame.getSourceFilePath());
             if (frame.getLine() == 0) {
-                // ???? should we just not push such frames on the stack?
-                // what does this mean?
+                // Frame line not yet set - step notification hasn't run yet
+                // This can happen when breakpoint fires before first line executes
+                System.out.println("[luceedebug] getCfStack: skipping frame with line=0");
                 continue;
             }
             else {
@@ -564,6 +576,7 @@ public class DebugManager implements IDebugManager {
                 // fallthrough
             case CfStepRequest.STEP_OUT: {
                 stepRequestByThread.put(thread, new CfStepRequest(frame.getDepth(), type));
+                hasAnyStepRequests = true;
                 return;
             }
             default: {
@@ -577,15 +590,27 @@ public class DebugManager implements IDebugManager {
     // This holds strongrefs to Thread objects, but requests should be cleared out after their completion
     // It doesn't make sense to have a step request for thread that would otherwise be reclaimable but for our reference to it here
     private ConcurrentHashMap<Thread, CfStepRequest> stepRequestByThread = new ConcurrentHashMap<>();
+    // Fast-path flag: volatile read is cheaper than ConcurrentHashMap.isEmpty() or .get()
+    private volatile boolean hasAnyStepRequests = false;
 
     public void clearStepRequest(Thread thread) {
         stepRequestByThread.remove(thread);
+        hasAnyStepRequests = !stepRequestByThread.isEmpty();
     }
 
     public void luceedebug_stepNotificationEntry_step(int lineNumber) {
-        final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
         Thread currentThread = Thread.currentThread();
-        DebugFrame frame = maybeUpdateTopmostFrame(currentThread, lineNumber); // should be "definite update topmost frame", we 100% expect there to be a frame
+
+        // ALWAYS update the frame's line number, even when not stepping
+        // This is required for breakpoints to work - they need to know the current line
+        DebugFrame frame = maybeUpdateTopmostFrame(currentThread, lineNumber);
+
+        // Fast path: if not stepping, we're done after updating line number
+        if (!hasAnyStepRequests) {
+            return;
+        }
+
+        final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
 
         CfStepRequest request = stepRequestByThread.get(currentThread);
         if (request == null) {
@@ -606,10 +631,15 @@ public class DebugManager implements IDebugManager {
      * So we want the debugger to return to the callsite in the normal case, but jump to any catch/finally blocks in the exceptional case.
      */
     public void luceedebug_stepNotificationEntry_stepAfterCompletedUdfCall() {
+        // Fast path: single volatile read when not stepping (99.9% of the time)
+        if (!hasAnyStepRequests) {
+            return;
+        }
+
         final int minDistanceToLuceedebugStepNotificationEntryFrame = 0;
 
         Thread currentThread = Thread.currentThread();
-        DebugFrame frame = getTopmostFrame(Thread.currentThread());
+        DebugFrame frame = getTopmostFrame(currentThread);
 
         if (frame == null) {
             // just popped last frame?
@@ -690,6 +720,8 @@ public class DebugManager implements IDebugManager {
     }
 
     public void pushCfFrame(PageContext pageContext, String sourceFilePath) {
+        Thread t = Thread.currentThread();
+        System.out.println("[luceedebug] pushCfFrame: thread=" + t.getName() + " (id=" + t.getId() + ") identity=" + System.identityHashCode(t) + " file=" + sourceFilePath);
         maybe_pushCfFrame_worker(pageContext, sourceFilePath);
     }
     

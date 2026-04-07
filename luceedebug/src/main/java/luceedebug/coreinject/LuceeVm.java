@@ -461,6 +461,7 @@ public class LuceeVm implements ILuceeVm {
             // We'll have set done=true prior to resuming this thread.
             while (!done.get()); // about ~8ms to queueWork + wait for work to complete
         });
+
     }
 
     /**
@@ -471,20 +472,34 @@ public class LuceeVm implements ILuceeVm {
      */
     private static enum SteppingState { stepping, finalizingViaAwaitedBreakpoint }
     private ConcurrentMap<JdwpThreadID, SteppingState> steppingStatesByThread = new ConcurrentHashMap<>();
-    private Consumer<JdwpThreadID> stepEventCallback = null;
-    private BiConsumer<JdwpThreadID, DapBreakpointID> breakpointEventCallback = null;
+    private Consumer<Long> stepEventCallback = null;
+
+    /**
+     * Callback for native breakpoint events (Lucee7+ native suspend).
+     * Called with Java thread ID and optional label when a thread hits a native breakpoint.
+     */
+    private BiConsumer<Long, String> nativeBreakpointEventCallback = null;
+    private BiConsumer<Long, DapBreakpointID> breakpointEventCallback = null;
     private Consumer<BreakpointsChangedEvent> breakpointsChangedCallback = null;
 
-    public void registerStepEventCallback(Consumer<JdwpThreadID> cb) {
+    public void registerStepEventCallback(Consumer<Long> cb) {
         stepEventCallback = cb;
     }
 
-    public void registerBreakpointEventCallback(BiConsumer<JdwpThreadID, DapBreakpointID> cb) {
+    public void registerBreakpointEventCallback(BiConsumer<Long, DapBreakpointID> cb) {
         breakpointEventCallback = cb;
     }
 
     public void registerBreakpointsChangedCallback(Consumer<BreakpointsChangedEvent> cb) {
         this.breakpointsChangedCallback = cb;
+    }
+
+    /**
+     * Register callback for native breakpoint events (Lucee7+).
+     * Called with Java thread ID and optional label when a thread hits a native breakpoint.
+     */
+    public void registerNativeBreakpointEventCallback(BiConsumer<Long, String> cb) {
+        nativeBreakpointEventCallback = cb;
     }
 
     private void initEventPump() {
@@ -666,7 +681,7 @@ public class LuceeVm implements ILuceeVm {
                 // We would delete the breakpoint request here,
                 // but it should have been registered with an eventcount filter of 1,
                 // meaning that it has auto-expired
-                stepEventCallback.accept(JdwpThreadID.of(event.thread()));
+                stepEventCallback.accept(threadID.get());
             }
         }
         else {
@@ -692,23 +707,31 @@ public class LuceeVm implements ILuceeVm {
 
             if (breakpointEventCallback != null) {
                 final var bpID = (DapBreakpointID) request.getProperty(LUCEEDEBUG_BREAKPOINT_ID);
-                breakpointEventCallback.accept(threadID, bpID);
+                breakpointEventCallback.accept(threadID.get(), bpID);
             }
         }
     }
 
-    public ThreadReference[] getThreadListing() {
-        var result = new ArrayList<ThreadReference>();
+    public ThreadInfo[] getThreadListing() {
+        var result = new ArrayList<ThreadInfo>();
         for (var threadRef : threadMap_.threadRefByThread.values()) {
-            result.add(threadRef);
+            try {
+                result.add(new ThreadInfo(threadRef.uniqueID(), threadRef.name()));
+            }
+            catch (ObjectCollectedException e) {
+                // Thread was garbage collected, skip it
+            }
         }
 
-        return result.toArray(size -> new ThreadReference[size]);
+        return result.toArray(size -> new ThreadInfo[size]);
     }
 
     public IDebugFrame[] getStackTrace(long jdwpThreadId) {
         var thread = threadMap_.getThreadByJdwpIdOrFail(new JdwpThreadID(jdwpThreadId));
-        return GlobalIDebugManagerHolder.debugManager.getCfStack(thread);
+        System.out.println("[luceedebug] getStackTrace: jdwpThreadId=" + jdwpThreadId + " -> thread=" + thread.getName() + " (id=" + thread.getId() + ") identity=" + System.identityHashCode(thread));
+        var frames = GlobalIDebugManagerHolder.debugManager.getCfStack(thread);
+        System.out.println("[luceedebug] getStackTrace: returning " + frames.length + " frames");
+        return frames;
     }
 
     public IDebugEntity[] getScopes(long frameID) {
@@ -786,6 +809,18 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public IBreakpoint[] bindBreakpoints(RawIdePath idePath, CanonicalServerAbsPath serverPath, int[] lines, String[] exprs) {
+        if (NativeDebuggerListener.isNativeMode()) {
+            NativeDebuggerListener.clearBreakpointsForFile(serverPath.get());
+            for (int line : lines) {
+                NativeDebuggerListener.addBreakpoint(serverPath.get(), line);
+            }
+            var lineInfo = freshBpLineAndIdRecordsFromLines(idePath, serverPath, lines, exprs);
+            IBreakpoint[] result = new Breakpoint[lineInfo.length];
+            for (int i = 0; i < lineInfo.length; i++) {
+                result[i] = Breakpoint.Bound(lineInfo[i].line, lineInfo[i].id);
+            }
+            return result;
+        }
         return __internal__bindBreakpoints(serverPath, freshBpLineAndIdRecordsFromLines(idePath, serverPath, lines, exprs));
     }
 
@@ -915,6 +950,10 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void clearAllBreakpoints() {
+        if (NativeDebuggerListener.isNativeMode()) {
+            NativeDebuggerListener.clearAllBreakpoints();
+            return;
+        }
         replayableBreakpointRequestsByAbsPath_.clear();
         vm_.eventRequestManager().deleteAllBreakpoints();
     }
@@ -956,6 +995,10 @@ public class LuceeVm implements ILuceeVm {
     }
 
     public void continueAll() {
+        if (NativeDebuggerListener.isNativeMode()) {
+            NativeDebuggerListener.resumeAllNativeThreads();
+            return;
+        }
         // avoid concurrent modification exceptions, calling continue_ mutates `suspendedThreads`
         Arrays
             // TODO: Set<T>.toArray(sz -> new T[sz]) is not typesafe, changing the type of Set<T>
@@ -977,8 +1020,12 @@ public class LuceeVm implements ILuceeVm {
         stepIn(new JdwpThreadID(jdwpThreadID));
     }
 
-    public void continue_(long jdwpThreadID) {
-        continue_(new JdwpThreadID(jdwpThreadID));
+    public void continue_(long threadID) {
+        if (NativeDebuggerListener.isNativeMode()) {
+            NativeDebuggerListener.resumeNativeThread(threadID);
+            return;
+        }
+        continue_(new JdwpThreadID(threadID));
     }
 
     public void stepIn(JdwpThreadID jdwpThreadID) {
@@ -1076,6 +1123,21 @@ public class LuceeVm implements ILuceeVm {
         return GlobalIDebugManagerHolder.debugManager.doDumpAsJSON(getSuspendedThreadListForDumpWorker(), dapVariablesReference);
     }
 
+    public String getMetadata(int dapVariablesReference) {
+        // Not implemented for JDWP mode - would need IDebugManager extension
+        return "\"getMetadata not supported in JDWP mode\"";
+    }
+
+    public String getApplicationSettings() {
+        // Not implemented for JDWP mode - would need IDebugManager extension
+        return "\"getApplicationSettings not supported in JDWP mode\"";
+    }
+
+    public org.eclipse.lsp4j.debug.CompletionItem[] getCompletions(int frameId, String partialExpr) {
+        // Not implemented for JDWP mode
+        return new org.eclipse.lsp4j.debug.CompletionItem[0];
+    }
+
     public String[] getTrackedCanonicalFileNames() {
         final var result = new ArrayList<String>();
         for (var klassMap : klassMap_.values()) {
@@ -1106,5 +1168,31 @@ public class LuceeVm implements ILuceeVm {
 
     public Either<String, Either<ICfValueDebuggerBridge, String>> evaluate(int frameID, String expr) {
         return GlobalIDebugManagerHolder.debugManager.evaluate((Long)(long)frameID, expr);
+    }
+
+    public Either<String, Either<ICfValueDebuggerBridge, String>> setVariable(long variablesReference, String name, String value, long frameId) {
+        // setVariable not yet implemented for JDWP mode
+        // Would need to use DebugManager to evaluate and set the value
+        return Either.Left("setVariable not yet supported in JDWP mode - use native debugger mode instead");
+    }
+
+    // Not used in JDWP mode - exception handling uses JDWP events
+    public void registerExceptionEventCallback(Consumer<Long> cb) {
+        // no-op for JDWP mode
+    }
+
+    public void registerPauseEventCallback(Consumer<Long> cb) {
+        // no-op for JDWP mode - could use ThreadReference.suspend() but not implemented
+    }
+
+    public void pause(long threadID) {
+        // TODO: Could use ThreadReference.suspend() for JDWP mode
+        // For now, just log that it's not supported
+        System.out.println("[luceedebug] pause() not implemented for JDWP mode");
+    }
+
+    public Throwable getExceptionForThread(long threadId) {
+        // JDWP mode doesn't use NativeDebuggerListener for exceptions
+        return null;
     }
 }

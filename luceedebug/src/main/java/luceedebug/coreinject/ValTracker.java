@@ -21,8 +21,22 @@ public class ValTracker {
     private final Map<Object, WeakTaggedObject> wrapperByObj = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Long, WeakTaggedObject> wrapperByID = new ConcurrentHashMap<>();
 
+    /**
+     * Track the variable path for each registered object ID.
+     * Used by setVariable to build the full path like "local.foo.bar".
+     * Path is the dot-separated path from the scope root (e.g., "local", "local.myStruct", "local.myStruct.nested").
+     */
+    private final Map<Long, String> pathById = new ConcurrentHashMap<>();
+
+    /**
+     * Track the frame ID for each registered object ID.
+     * Used by setVariable to get the correct PageContext.
+     */
+    private final Map<Long, Long> frameIdById = new ConcurrentHashMap<>();
+
     private static class WeakTaggedObject {
-        private static final AtomicLong nextId = new AtomicLong();
+        // Start at 1, not 0 - DAP uses variablesReference=0 to mean "no children"
+        private static final AtomicLong nextId = new AtomicLong(1);
         public final long id;
         public final WeakReference<Object> wrapped;
         public WeakTaggedObject(Object obj) {
@@ -67,8 +81,10 @@ public class ValTracker {
             // It would be nice to assert that wrapperByObj().size() == wrapperByID.size() after we're done here, but the entries for wrapperByObj
             // are cleaned non-deterministically (in the google guava case, the java sync'd WeakHashMap seems much more deterministic but maybe
             // not guaranteed to be so), so there's no guarantee that the sizes sync up.
-            
+
             wrapperByID.remove(id);
+            pathById.remove(id);
+            frameIdById.remove(id);
 
             // __debug_updatedTracker("remove", id);
         }
@@ -119,6 +135,78 @@ public class ValTracker {
         }
 
         return weakTaggedObj.maybeToStrong();
+    }
+
+    /**
+     * Register or update the variable path for an object ID.
+     * Called when registering scopes (path = scope name) or when expanding children (path = parent.childKey).
+     * @param id The variablesReference ID
+     * @param path The dot-separated path from scope root (e.g., "local", "local.foo", "local.foo.bar")
+     */
+    public void setPath(long id, String path) {
+        if (path != null) {
+            pathById.put(id, path);
+        }
+    }
+
+    /**
+     * Get the variable path for an object ID.
+     * @param id The variablesReference ID
+     * @return The path, or null if not tracked
+     */
+    public String getPath(long id) {
+        return pathById.get(id);
+    }
+
+    /**
+     * Register an object and set its path in one call.
+     * @param obj The object to register
+     * @param path The variable path for this object
+     * @return TaggedObject with the ID
+     */
+    public TaggedObject registerObjectWithPath(Object obj, String path) {
+        TaggedObject tagged = idempotentRegisterObject(obj);
+        if (path != null) {
+            pathById.put(tagged.id, path);
+        }
+        return tagged;
+    }
+
+    /**
+     * Register an object and set its path and frameId in one call.
+     * @param obj The object to register
+     * @param path The variable path for this object
+     * @param frameId The frame ID for this object (for setVariable support)
+     * @return TaggedObject with the ID
+     */
+    public TaggedObject registerObjectWithPathAndFrameId(Object obj, String path, Long frameId) {
+        TaggedObject tagged = idempotentRegisterObject(obj);
+        if (path != null) {
+            pathById.put(tagged.id, path);
+        }
+        if (frameId != null) {
+            frameIdById.put(tagged.id, frameId);
+        }
+        return tagged;
+    }
+
+    /**
+     * Set the frame ID for an object ID.
+     * Used by setVariable to get the correct PageContext.
+     * @param id The variablesReference ID
+     * @param frameId The frame ID
+     */
+    public void setFrameId(long id, long frameId) {
+        frameIdById.put(id, frameId);
+    }
+
+    /**
+     * Get the frame ID for an object ID.
+     * @param id The variablesReference ID
+     * @return The frame ID, or null if not tracked
+     */
+    public Long getFrameId(long id) {
+        return frameIdById.get(id);
     }
 
     /**

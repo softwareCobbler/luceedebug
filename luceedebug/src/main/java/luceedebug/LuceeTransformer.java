@@ -2,11 +2,9 @@ package luceedebug;
 
 import java.lang.instrument.*;
 import java.lang.reflect.Method;
+import java.security.ProtectionDomain;
 
 import org.objectweb.asm.*;
-
-import java.security.ProtectionDomain;
-import java.util.ArrayList;
 
 public class LuceeTransformer implements ClassFileTransformer {
     private final String jdwpHost;
@@ -236,4 +234,5 @@ public class LuceeTransformer implements ClassFileTransformer {
             return null;
         }
     }
+
 }

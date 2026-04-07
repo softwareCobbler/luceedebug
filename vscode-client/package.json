@@ -55,6 +55,14 @@
         {
           "when": "debugType == 'cfml'",
           "command": "luceedebug.openFileForVariableSourcePath"
+        },
+        {
+          "when": "debugType == 'cfml'",
+          "command": "luceedebug.getMetadata"
+        },
+        {
+          "when": "debugType == 'cfml'",
+          "command": "luceedebug.getApplicationSettings"
         }
       ]
     },
@@ -97,6 +105,11 @@
       {
         "command": "luceedebug.openFileForVariableSourcePath",
         "title": "luceedebug: open defining file",
+        "enablement": "debugType == 'cfml'"
+      },
+      {
+        "command": "luceedebug.getMetadata",
+        "title": "luceedebug: get metadata",
         "enablement": "debugType == 'cfml'"
       }
     ],
@@ -160,6 +173,40 @@
                 ],
                 "default": "auto",
                 "description": "How paths returned from the debugger should be normalized (none, auto, posix, or windows)."
+              },
+              "logColor": {
+                "type": "boolean",
+                "default": true,
+                "description": "Enable ANSI colors in debugger log output."
+              },
+              "logLevel": {
+                "type": "string",
+                "enum": [
+                  "error",
+                  "info",
+                  "debug"
+                ],
+                "default": "info",
+                "description": "Debugger log verbosity level."
+              },
+              "logExceptions": {
+                "type": "boolean",
+                "default": false,
+                "description": "Log exceptions to the debug console."
+              },
+              "consoleOutput": {
+                "type": "boolean",
+                "default": false,
+                "description": "Stream console output to the debug console (Lucee 7.1+)."
+              },
+              "secret": {
+                "type": "string",
+                "description": "Secret that must match LUCEE_DAP_SECRET environment variable on the server."
+              },
+              "evaluation": {
+                "type": "boolean",
+                "default": true,
+                "description": "Enable expression evaluation in debug console, watch panel, and hover tooltips."
               }
             }
           }
@@ -170,14 +217,15 @@
             "request": "attach",
             "name": "Attach to server",
             "hostName": "localhost",
+            "port": 9999,
+            "secret": "",
             "pathTransforms": [
               {
                 "idePrefix": "${workspaceFolder}",
                 "serverPrefix": "/app"
               }
             ],
-            "pathSeparator": "auto",
-            "port": 8000
+            "pathSeparator": "auto"
           }
         ],
         "configurationSnippets": [
@@ -189,14 +237,15 @@
               "request": "attach",
               "name": "Attach to server",
               "hostName": "localhost",
+              "port": 9999,
+              "secret": "",
               "pathTransforms": [
                 {
                   "idePrefix": "^\"\\${workspaceFolder}\"",
                   "serverPrefix": "/app"
                 }
               ],
-              "pathSeparator": "auto",
-              "port": 8000
+              "pathSeparator": "auto"
             }
           }
         ],

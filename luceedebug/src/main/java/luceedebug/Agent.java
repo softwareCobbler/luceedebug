@@ -186,10 +186,23 @@ public class Agent {
             result.put("luceedebug.coreinject.frame.Frame$FrameContext", 1);
             result.put("luceedebug.coreinject.frame.Frame$FrameContext$SupplierOrNull", 1);
             result.put("luceedebug.coreinject.frame.DummyFrame", 1);
-    
+            result.put("luceedebug.coreinject.frame.NativeDebugFrame", 1);
+
+            // Native debugger classes - not used in agent mode but need to be in the map
+            result.put("luceedebug.coreinject.NativeLuceeVm", 0);
+            result.put("luceedebug.coreinject.NativeLuceeVm$1", 0);
+            result.put("luceedebug.coreinject.NativeLuceeVm$2", 0);
+            result.put("luceedebug.coreinject.NativeLuceeVm$3", 0);
+            result.put("luceedebug.coreinject.NativeDebuggerListener", 0);
+            result.put("luceedebug.coreinject.NativeDebuggerListener$1", 0);
+            result.put("luceedebug.coreinject.NativeDebuggerListener$CachedExecutableLines", 0);
+            result.put("luceedebug.coreinject.NativeDebuggerListener$StepState", 0);
+            result.put("luceedebug.coreinject.NativeDebuggerListener$SuspendLocation", 0);
+            result.put("luceedebug.coreinject.StepMode", 0);
+
             return result;
         }
-    
+
         public static Comparator<ClassInjection> comparator() {
             final Map<String, Integer> ordering = linearizedCoreInjectClasses();
             return Comparator.comparing(injection -> {

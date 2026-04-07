@@ -10,3 +10,12 @@ build
 .bloop
 generated/
 test/scratch
+/profiling/output
+/test-output
+/profiling/test-output
+.vscode/settings.json
+.claude/
+*.md
+!README.md
+build-output.txt
+test-output.txt

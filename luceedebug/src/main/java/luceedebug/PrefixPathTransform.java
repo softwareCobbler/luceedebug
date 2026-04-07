@@ -28,8 +28,15 @@ class PrefixPathTransform implements IPathTransform {
         return replacePrefix(s, caseAndPathSepLenient_idePrefixPattern, unadjusted_serverPrefix);
     }
 
+    public String getServerPrefix() {
+        return unadjusted_serverPrefix;
+    }
+
     public String asTraceString() {
-        return "PrefixPathTransform{idePrefix='" + unadjusted_idePrefix + "', serverPrefix='" + unadjusted_serverPrefix + "'}";
+        if (unadjusted_idePrefix.equals(unadjusted_serverPrefix)) {
+            return "Path: " + unadjusted_idePrefix;
+        }
+        return "Path mapping: IDE='" + unadjusted_idePrefix + "' -> Server='" + unadjusted_serverPrefix + "'";
     }
 
     /**

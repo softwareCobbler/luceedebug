@@ -8,8 +8,23 @@ public class Config {
     // but for now it's configurable
     private boolean stepIntoUdfDefaultValueInitFrames_ = false;
 
-    Config(boolean fsIsCaseSensitive) {
+    /**
+     * Static cache of filesystem case sensitivity.
+     * Set once at startup when Config is instantiated.
+     * Used by canonicalizeFileName() to skip lowercase on case-sensitive filesystems.
+     */
+    private static volatile boolean staticFsIsCaseSensitive = false;
+
+    /**
+     * Base path prefix for shortening paths in log output.
+     * Set from pathTransforms when DAP client attaches.
+     */
+    private static volatile String basePath = null;
+
+    public Config(boolean fsIsCaseSensitive) {
         this.fsIsCaseSensitive_ = fsIsCaseSensitive;
+        // Cache for static access
+        staticFsIsCaseSensitive = fsIsCaseSensitive;
     }
 
     public boolean getStepIntoUdfDefaultValueInitFrames() {
@@ -51,7 +66,37 @@ public class Config {
     }
 
     public static String canonicalizeFileName(String s) {
-        return s.replaceAll("[\\\\/]+", "/").toLowerCase();
+        // Normalize slashes (always needed)
+        String normalized = s.replaceAll("[\\\\/]+", "/");
+        // Only lowercase on case-insensitive filesystems (Windows)
+        return staticFsIsCaseSensitive ? normalized : normalized.toLowerCase();
+    }
+
+    /**
+     * Set the base path for shortening paths in log output.
+     */
+    public static void setBasePath(String path) {
+        basePath = path != null ? canonicalizeFileName(path) : null;
+    }
+
+    /**
+     * Shorten a path for display by removing the base path prefix.
+     * Returns the relative path (with leading /) if it starts with basePath, otherwise the full path.
+     */
+    public static String shortenPath(String path) {
+        if (basePath == null || path == null) {
+            return path;
+        }
+        String canon = canonicalizeFileName(path);
+        if (canon.startsWith(basePath)) {
+            String relative = canon.substring(basePath.length());
+            // Ensure leading slash
+            if (!relative.startsWith("/")) {
+                relative = "/" + relative;
+            }
+            return relative;
+        }
+        return path;
     }
 
 }

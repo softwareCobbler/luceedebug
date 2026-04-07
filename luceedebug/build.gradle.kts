@@ -89,14 +89,14 @@ tasks.jar {
                 "Premain-Class" to "luceedebug.Agent",
                 "Can-Redefine-Classes" to "true",
                 "Bundle-SymbolicName" to "luceedebug-osgi",
-                "Bundle-Version" to "2.0.1.1",
+                "Bundle-Version" to "3.0.0.0-BETA",
                 "Export-Package" to "luceedebug.*"
             )
         )
     }
 }
 
-val luceedebugVersion = "2.0.15"
+val luceedebugVersion = "3.0.0-BETA"
 val libfile = "luceedebug-" + luceedebugVersion + ".jar"
 
 // TODO: this should, but does not currently, participate in the `clean` task, so the generated file sticks around after invoking `clean`.
@@ -116,4 +116,28 @@ tasks.shadowJar {
     setEnableRelocation(true)
     relocationPrefix = "luceedebug_shadow"
     archiveFileName.set(libfile)
+}
+
+// Extension packaging task - creates .lex file for Lucee extension deployment
+val extensionVersion = "3.0.0"
+val extensionFile = "luceedebug-extension-${extensionVersion}.lex"
+
+tasks.register<Zip>("buildExtension") {
+    dependsOn("shadowJar")
+    archiveFileName.set(extensionFile)
+    destinationDirectory.set(file("${layout.buildDirectory.get()}/extension"))
+
+    // Include the shadow JAR as the main library
+    from(tasks.shadowJar.get().outputs) {
+        into("jars")
+    }
+
+    // Include the extension manifest
+    from("${rootProject.projectDir}/extension/META-INF") {
+        into("META-INF")
+    }
+
+    doLast {
+        println("Built extension: ${destinationDirectory.get()}/${extensionFile}")
+    }
 }

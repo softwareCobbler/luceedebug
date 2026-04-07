@@ -1,0 +1,506 @@
+# DAP Tests for luceedebug
+#
+# Tests the Debug Adapter Protocol functionality against multiple Lucee versions.
+# For 7.1 (native debugger branch), we build from source.
+#
+# Architecture:
+#   - Debuggee: Lucee Express (Tomcat) with luceedebug extension, DAP on port 10000, HTTP on 8888
+#   - Test Runner: script-runner instance running TestBox tests, connects to debuggee
+
+name: DAP Tests
+
+on: [push, pull_request, workflow_dispatch]
+
+env:
+  EXPRESS_TEMPLATE_URL: https://cdn.lucee.org/express-templates/lucee-tomcat-11.0.13-template.zip
+  DAP_PORT: 10000
+  DEBUGGEE_HTTP_PORT: 8888
+
+jobs:
+  # Prime Maven cache by running script-runner once
+  # This ensures the cache is populated for subsequent jobs
+  prime-maven-cache:
+    name: Prime Maven cache
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: maven-cache
+      - name: write tmp cfm file
+        run: echo '<cfoutput>#now()#</cfoutput>' > prime-cache.cfm
+      - name: Prime cache with script-runner
+        uses: lucee/script-runner@main
+        with:
+          webroot: ${{ github.workspace }}/
+          execute: /prime-cache.cfm
+          luceeVersionQuery: 7.0/all/light
+
+  # Build Lucee 7.1 from the native debugger branch
+  build-lucee-71:
+    name: Build Lucee 7.1 (native debugger)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Lucee (native debugger branch)
+        uses: actions/checkout@v4
+        with:
+          repository: zspitzer/Lucee
+          ref: LDEV-1402-native-debugger
+          path: lucee
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: lucee-maven-${{ hashFiles('lucee/**/pom.xml') }}
+          restore-keys: |
+            lucee-maven-
+
+      - name: Build Lucee with ant fast
+        working-directory: lucee/loader
+        run: ant fast
+
+      - name: Find built JAR
+        id: find-jar
+        working-directory: lucee/loader/target
+        run: |
+          JAR_FILE=$(ls lucee-*.jar | head -1)
+          echo "jar_name=$JAR_FILE" >> $GITHUB_OUTPUT
+          echo "Built JAR: $JAR_FILE"
+
+      - name: Upload Lucee 7.1 JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: lucee-71-jar
+          path: lucee/loader/target/lucee-*.jar
+          retention-days: 1
+
+  # Build luceedebug extension
+  build-extension:
+    name: Build luceedebug extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout luceedebug
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      - name: Build extension with Gradle
+        run: ./gradlew buildExtension
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: luceedebug-extension
+          path: luceedebug/build/extension/*.lex
+          retention-days: 1
+
+  # Test against Lucee 7.1 (native debugger branch)
+  test-lucee-71:
+    name: Test DAP - Lucee 7.1 (native)
+    runs-on: ubuntu-latest
+    needs: [build-lucee-71, build-extension]
+
+    steps:
+      - name: Checkout luceedebug
+        uses: actions/checkout@v4
+
+      - name: Checkout Lucee (for test framework)
+        uses: actions/checkout@v4
+        with:
+          repository: lucee/lucee
+          path: lucee
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Download Lucee 7.1 JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: lucee-71-jar
+          path: lucee-jar
+
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: luceedebug-extension
+          path: extension
+
+      - name: Find Lucee JAR
+        id: find-jar
+        run: |
+          JAR_FILE=$(ls lucee-jar/lucee-*.jar | head -1)
+          echo "jar_path=$JAR_FILE" >> $GITHUB_OUTPUT
+          echo "jar_name=$(basename $JAR_FILE)" >> $GITHUB_OUTPUT
+          echo "Using Lucee JAR: $JAR_FILE"
+
+      # Set up Lucee Express for debuggee
+      - name: Download Lucee Express template
+        run: |
+          curl -L -o express-template.zip "$EXPRESS_TEMPLATE_URL"
+          unzip -q express-template.zip -d debuggee
+
+      - name: Install Lucee JAR into Express
+        run: |
+          # Remove any existing Lucee JAR
+          rm -f debuggee/lib/lucee-*.jar
+          # Copy our built JAR
+          cp ${{ steps.find-jar.outputs.jar_path }} debuggee/lib/
+
+      - name: Install extension into Express
+        run: |
+          mkdir -p debuggee/lucee-server/deploy
+          cp extension/*.lex debuggee/lucee-server/deploy/
+
+      - name: Copy test artifacts to debuggee webroot
+        run: |
+          mkdir -p debuggee/webapps/ROOT/test/cfml
+          cp -r test/cfml/artifacts debuggee/webapps/ROOT/test/cfml/
+
+      - name: Configure debuggee setenv.sh
+        run: |
+          echo 'export LUCEE_DAP_SECRET=testing' >> debuggee/bin/setenv.sh
+          echo 'export LUCEE_DAP_PORT=10000' >> debuggee/bin/setenv.sh
+          echo 'export LUCEE_LOGGING_FORCE_LEVEL=trace' >> debuggee/bin/setenv.sh
+          # Enable Felix OSGi debug logging to diagnose bundle unload
+          echo 'export FELIX_LOG_LEVEL=debug' >> debuggee/bin/setenv.sh
+          # Enable luceedebug internal debug logging
+          echo 'export LUCEE_DAP_DEBUG=true' >> debuggee/bin/setenv.sh
+          chmod +x debuggee/bin/setenv.sh
+
+      - name: Warmup debuggee (Lucee Express)
+        run: |
+          cd debuggee
+          # Configure Tomcat to use port 8888
+          sed -i 's/port="8080"/port="8888"/g' conf/server.xml
+          # Run warmup first - this compiles everything then exits
+          echo "Running Lucee warmup..."
+          export LUCEE_ENABLE_WARMUP=true
+          ./bin/catalina.sh run
+          echo "Warmup complete"
+
+      - name: Start debuggee (Lucee Express)
+        run: |
+          cd debuggee
+          # Start as daemon - writes stdout to logs/catalina.out
+          echo "Starting debuggee..."
+          ./bin/catalina.sh start
+          echo "Debuggee started"
+
+      - name: Wait for debuggee to be ready
+        run: |
+          echo "Waiting for HTTP on port 8888..."
+          for i in {1..30}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/ | grep -q "200\|302\|404"; then
+              echo "HTTP ready after $i seconds"
+              break
+            fi
+            sleep 1
+          done
+          # Verify artifact is accessible - fail fast if not
+          echo "Testing artifact access..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/test/cfml/artifacts/breakpoint-target.cfm)
+          echo "Artifact HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: Artifact not accessible!"
+            exit 1
+          fi
+          echo "Waiting for DAP on port 10000..."
+          DAP_READY=false
+          for i in {1..10}; do
+            # Try both IPv4 and IPv6 (Java may bind to either depending on system config)
+            if nc -z 127.0.0.1 10000 2>/dev/null || nc -z ::1 10000 2>/dev/null; then
+              echo "DAP ready after $i seconds"
+              DAP_READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$DAP_READY" != "true" ]; then
+            echo "ERROR: DAP port 10000 not listening!"
+            # Debug: show what's listening
+            echo "Listening ports:"
+            ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true
+            # Debug: dump luceedebug thread state
+            echo "Luceedebug thread state:"
+            curl -s http://localhost:8888/test/cfml/artifacts/debug-threads.cfm || echo "Failed to fetch thread dump"
+            exit 1
+          fi
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: maven-cache
+          
+
+      - name: Cache Lucee downloads
+        uses: actions/cache@v4
+        with:
+          path: _actions/lucee/script-runner/main/lucee-download-cache
+          key: lucee-downloads-71
+
+      # Run tests using script-runner (separate Lucee instance)
+      # Test runner uses 7.0 stable - it just needs to connect to the debuggee
+      # NOTE: Don't install luceedebug extension in test runner - only debuggee needs it
+      - name: Run DAP Tests
+        uses: lucee/script-runner@main
+        with:
+          webroot: ${{ github.workspace }}/lucee/test
+          execute: /bootstrap-tests.cfm
+          luceeVersionQuery: 7.0/all/light
+        env:
+          testLabels: dap
+          testAdditional: ${{ github.workspace }}/test/cfml
+          testDebug: "true"
+          DAP_HOST: localhost
+          DAP_PORT: "10000"
+          DAP_SECRET: testing
+          DEBUGGEE_HTTP: http://localhost:8888
+          DEBUGGEE_ARTIFACT_PATH: ${{ github.workspace }}/debuggee/webapps/ROOT/test/cfml/artifacts/
+
+      - name: Stop debuggee
+        if: always()
+        run: |
+          cd debuggee
+          ./bin/shutdown.sh || true
+
+      - name: Show catalina.out
+        if: always()
+        run: |
+          echo "=== catalina.out ==="
+          cat debuggee/logs/catalina.out || echo "No catalina.out found"
+
+      - name: Upload debuggee logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debuggee-logs-71
+          path: |
+            debuggee/logs/
+            debuggee/lucee-server/context/logs/
+            debuggee/lucee-server/context/cfclasses/
+
+  # Test against Lucee 7.0 (stable) - agent mode
+  # Note: Does NOT use the extension (requires 7.1+), uses luceedebug as Java agent instead
+  test-lucee-70:
+    name: Test DAP - Lucee 7.0 (agent)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout luceedebug
+        uses: actions/checkout@v4
+
+      - name: Checkout Lucee (for test framework)
+        uses: actions/checkout@v4
+        with:
+          repository: lucee/lucee
+          path: lucee
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # Set up Lucee Express for debuggee
+      # Note: Extension is NOT installed for 7.0 - it requires Lucee 7.1+
+      # Agent mode uses luceedebug JAR as a Java agent instead
+      - name: Download Lucee Express template
+        run: |
+          curl -L -o express-template.zip "$EXPRESS_TEMPLATE_URL"
+          unzip -q express-template.zip -d debuggee
+
+      - name: Download Lucee 7.0 JAR
+        run: |
+          # Get latest 7.0 snapshot filename via update API
+          LUCEE_FILENAME=$(curl -s "https://update.lucee.org/rest/update/provider/latest/7.0/all/jar/filename")
+          # Strip quotes if present (API returns quoted string)
+          LUCEE_FILENAME=$(echo "$LUCEE_FILENAME" | tr -d '"')
+          if [ -z "$LUCEE_FILENAME" ] || [[ "$LUCEE_FILENAME" == *"error"* ]]; then
+            LUCEE_FILENAME="lucee-7.0.2.1-SNAPSHOT.jar"
+          fi
+          LUCEE_URL="https://cdn.lucee.org/$LUCEE_FILENAME"
+          echo "Downloading Lucee from: $LUCEE_URL"
+          curl -L -f -o lucee.jar "$LUCEE_URL"
+          # Validate JAR is not corrupt
+          if ! unzip -t lucee.jar > /dev/null 2>&1; then
+            echo "ERROR: Downloaded JAR is corrupt!"
+            exit 1
+          fi
+          # Remove existing and copy new
+          rm -f debuggee/lib/lucee-*.jar
+          cp lucee.jar debuggee/lib/
+
+      - name: Copy test artifacts to debuggee webroot
+        run: |
+          mkdir -p debuggee/webapps/ROOT/test/cfml
+          cp -r test/cfml/artifacts debuggee/webapps/ROOT/test/cfml/
+
+      - name: Build luceedebug agent JAR
+        run: |
+          ./gradlew shadowJar
+          AGENT_JAR=$(ls luceedebug/build/libs/luceedebug-*.jar | grep -v sources | head -1)
+          echo "AGENT_JAR=$AGENT_JAR" >> $GITHUB_ENV
+          cp $AGENT_JAR debuggee/
+
+      - name: Upload agent JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: luceedebug-agent
+          path: luceedebug/build/libs/luceedebug-*.jar
+          retention-days: 1
+
+      - name: Configure debuggee for agent mode
+        run: |
+          AGENT_JAR_NAME=$(basename $AGENT_JAR)
+          # Add JVM args for JDWP and luceedebug agent
+          # Secret is read from env var at connection time, not javaagent args
+          echo "export LUCEE_DAP_SECRET=testing" >> debuggee/bin/setenv.sh
+          echo "export LUCEE_LOGGING_FORCE_LEVEL=trace" >> debuggee/bin/setenv.sh
+          # Enable luceedebug internal debug logging
+          echo "export LUCEE_DAP_DEBUG=true" >> debuggee/bin/setenv.sh
+          echo "export CATALINA_OPTS=\"\$CATALINA_OPTS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=localhost:9999\"" >> debuggee/bin/setenv.sh
+          echo "export CATALINA_OPTS=\"\$CATALINA_OPTS -javaagent:\$CATALINA_HOME/$AGENT_JAR_NAME=jdwpHost=localhost,jdwpPort=9999,debugHost=0.0.0.0,debugPort=10000,jarPath=\$CATALINA_HOME/$AGENT_JAR_NAME\"" >> debuggee/bin/setenv.sh
+          chmod +x debuggee/bin/setenv.sh
+
+      - name: Warmup debuggee (Lucee Express)
+        run: |
+          cd debuggee
+          # Configure Tomcat to use port 8888
+          sed -i 's/port="8080"/port="8888"/g' conf/server.xml
+          # Run warmup first - this compiles everything then exits
+          echo "Running Lucee warmup..."
+          export LUCEE_ENABLE_WARMUP=true
+          ./bin/catalina.sh run
+          echo "Warmup complete"
+
+      - name: Start debuggee (Lucee Express)
+        run: |
+          cd debuggee
+          # Start as daemon - writes stdout to logs/catalina.out
+          echo "Starting debuggee..."
+          ./bin/catalina.sh start
+          echo "Debuggee started"
+
+      - name: Wait for debuggee to be ready
+        run: |
+          echo "Waiting for HTTP on port 8888..."
+          for i in {1..30}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/ | grep -q "200\|302\|404"; then
+              echo "HTTP ready after $i seconds"
+              break
+            fi
+            sleep 1
+          done
+          # Verify artifact is accessible - fail fast if not
+          echo "Testing artifact access..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/test/cfml/artifacts/breakpoint-target.cfm)
+          echo "Artifact HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: Artifact not accessible!"
+            exit 1
+          fi
+          echo "Waiting for DAP on port 10000..."
+          DAP_READY=false
+          for i in {1..10}; do
+            # Try both IPv4 and IPv6 (Java may bind to either depending on system config)
+            if nc -z 127.0.0.1 10000 2>/dev/null || nc -z ::1 10000 2>/dev/null; then
+              echo "DAP ready after $i seconds"
+              DAP_READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$DAP_READY" != "true" ]; then
+            echo "ERROR: DAP port 10000 not listening!"
+            # Debug: show what's listening
+            echo "Listening ports:"
+            ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true
+            # Debug: dump luceedebug thread state
+            echo "Luceedebug thread state:"
+            curl -s http://localhost:8888/test/cfml/artifacts/debug-threads.cfm || echo "Failed to fetch thread dump"
+            exit 1
+          fi
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: maven-cache
+
+      - name: Cache Lucee downloads
+        uses: actions/cache@v4
+        with:
+          path: _actions/lucee/script-runner/main/lucee-download-cache
+          key: lucee-downloads-70
+
+      # NOTE: Don't install luceedebug extension in test runner - only debuggee needs it
+      - name: Run DAP Tests
+        uses: lucee/script-runner@main
+        with:
+          webroot: ${{ github.workspace }}/lucee/test
+          execute: /bootstrap-tests.cfm
+          luceeVersionQuery: 7.0/all/light
+        env:
+          testLabels: dap
+          testAdditional: ${{ github.workspace }}/test/cfml
+          testDebug: "true"
+          DAP_HOST: localhost
+          DAP_PORT: "10000"
+          DAP_SECRET: testing
+          DEBUGGEE_HTTP: http://localhost:8888
+          DEBUGGEE_ARTIFACT_PATH: ${{ github.workspace }}/debuggee/webapps/ROOT/test/cfml/artifacts/
+
+      - name: Stop debuggee
+        if: always()
+        run: |
+          cd debuggee
+          ./bin/shutdown.sh || true
+
+      - name: Show catalina.out
+        if: always()
+        run: |
+          echo "=== catalina.out ==="
+          cat debuggee/logs/catalina.out || echo "No catalina.out found"
+
+      - name: Upload debuggee logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debuggee-logs-70
+          path: |
+            debuggee/logs/
+            debuggee/lucee-server/context/logs/
+            debuggee/lucee-server/context/cfclasses/

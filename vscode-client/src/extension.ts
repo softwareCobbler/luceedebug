@@ -100,9 +100,9 @@ export function activate(context: vscode.ExtensionContext) {
 			if (!currentDebugSession || args?.variable === undefined || args.variable.variablesReference === 0) {
 				return;
 			}
-			
+
 			const result : DumpResponse = await currentDebugSession.customRequest("dumpAsJSON", {variablesReference: args.variable.variablesReference});
-			
+
 			let obj : any;
 			try {
 				obj = JSON.parse(result.content);
@@ -115,7 +115,58 @@ export function activate(context: vscode.ExtensionContext) {
 			const text = JSON.stringify(obj, undefined, 4);
 
 			luceedebugTextDocumentProvider.addOrReplaceTextDoc(uri, text);
-			
+
+			const doc = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(doc);
+		}),
+		vscode.commands.registerCommand("luceedebug.getMetadata", async (args?: Partial<DebugPaneContextMenuArgs>) => {
+			if (!currentDebugSession || args?.variable === undefined || args.variable.variablesReference === 0) {
+				return;
+			}
+
+			const result : DumpResponse = await currentDebugSession.customRequest("getMetadata", {variablesReference: args.variable.variablesReference});
+
+			let obj : any;
+			try {
+				obj = JSON.parse(result.content);
+			}
+			catch {
+				obj = "Failed to parse the following JSON:\n" + result.content;
+			}
+
+			const uri = vscode.Uri.from({scheme: "luceedebug", path: args.variable.name + ".metadata", fragment: args.variable.variablesReference.toString()});
+			const text = JSON.stringify(obj, undefined, 4);
+
+			luceedebugTextDocumentProvider.addOrReplaceTextDoc(uri, text);
+
+			const doc = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(doc);
+		}),
+		vscode.commands.registerCommand("luceedebug.getApplicationSettings", async (args?: Partial<DebugPaneContextMenuArgs>) => {
+			if (!currentDebugSession) {
+				return;
+			}
+			// Only allow for the top-level application scope
+			if (!args?.container || args.container.name !== "application") {
+				vscode.window.showWarningMessage("getApplicationSettings is only available for the top-level application scope");
+				return;
+			}
+
+			const result : DumpResponse = await currentDebugSession.customRequest("getApplicationSettings", {variablesReference: args.container.variablesReference});
+
+			let obj : any;
+			try {
+				obj = JSON.parse(result.content);
+			}
+			catch {
+				obj = "Failed to parse the following JSON:\n" + result.content;
+			}
+
+			const uri = vscode.Uri.from({scheme: "luceedebug", path: "applicationSettings", fragment: Date.now().toString()});
+			const text = JSON.stringify(obj, undefined, 4);
+
+			luceedebugTextDocumentProvider.addOrReplaceTextDoc(uri, text);
+
 			const doc = await vscode.workspace.openTextDocument(uri);
 			await vscode.window.showTextDocument(doc);
 		})
